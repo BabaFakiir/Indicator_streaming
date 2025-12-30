@@ -1,0 +1,7 @@
+pandas
+TA-Lib
+pytz
+pyotp
+smartapi-python
+websocket-client
+supabase

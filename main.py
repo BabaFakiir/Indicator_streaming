@@ -45,6 +45,7 @@ def run_websocket():
 
             def on_open(_):
                 print("WebSocket connected")
+                print("Subscribing to tokens:", list(SYMBOLS.keys()))
                 ws.subscribe(
                     correlation_id="ema",
                     mode=1,
@@ -55,6 +56,7 @@ def run_websocket():
                 )
 
             def on_message(msg):
+                print("TICK RECEIVED")
                 try:
                     # ---- Guard: token ----
                     token = msg.get("token")
@@ -76,8 +78,8 @@ def run_websocket():
                         ts = dt.datetime.now(IST)
 
                     # ---- Market hours guard ----
-                    if not in_market_hours(ts):
-                        return
+                    # if not in_market_hours(ts):
+                    #     return
 
                     # ---- Candle aggregation ----
                     candles = aggregator.process_tick(token, price, ts)
@@ -110,7 +112,8 @@ def run_websocket():
 
 
             ws.on_open = on_open
-            ws.on_message = on_message
+            ws.on_data = lambda wsapp, msg: on_message(msg)
+
 
             # Force reconnect on ANY failure
             ws.on_error = lambda *_: (_ for _ in ()).throw(Exception("WebSocket error"))

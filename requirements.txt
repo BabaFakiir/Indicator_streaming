@@ -5,3 +5,4 @@ pyotp
 smartapi-python
 websocket-client
 supabase
+logzero

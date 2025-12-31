@@ -56,39 +56,58 @@ def run_websocket():
 
             def on_message(msg):
                 try:
-                    ts = dt.datetime.fromtimestamp(
-                        msg["exchange_timestamp"] / 1000, tz=IST
-                    )
+                    # ---- Guard: token ----
+                    token = msg.get("token")
+                    if token is None:
+                        return
+                    token = str(token)
 
+                    # ---- Guard: price ----
+                    price = msg.get("last_traded_price")
+                    if price is None:
+                        return
+                    price = float(price)
+
+                    # ---- Timestamp ----
+                    ts_ms = msg.get("exchange_timestamp")
+                    if ts_ms:
+                        ts = dt.datetime.fromtimestamp(ts_ms / 1000, tz=IST)
+                    else:
+                        ts = dt.datetime.now(IST)
+
+                    # ---- Market hours guard ----
                     if not in_market_hours(ts):
                         return
 
-                    candles = aggregator.process_tick(
-                        msg["token"],
-                        float(msg["ltp"]),
-                        ts
+                    # ---- Candle aggregation ----
+                    candles = aggregator.process_tick(token, price, ts)
+                    if candles is None:
+                        return
+
+                    # ---- Indicator calculation ----
+                    indicators = calculate_indicators(candles)
+                    if not indicators:
+                        return
+
+                    symbol = SYMBOLS[token]
+
+                    print(
+                        f"[{indicators['time']}] {symbol} | "
+                        f"EMA9={indicators['ema9']} | "
+                        f"EMA21={indicators['ema21']} | "
+                        f"RSI14={indicators['rsi14']}"
                     )
 
-                    if candles:
-                        indicators = calculate_indicators(candles)
-                        if indicators:
-                            symbol = SYMBOLS[msg["token"]]
-                            print(
-                                f"[{indicators['time']}] {symbol} | "
-                                f"EMA9={indicators['ema9']} | "
-                                f"EMA21={indicators['ema21']} | "
-                                f"RSI14={indicators['rsi14']}"
-                            )
-
-                            upsert_indicators(
-                                symbol,
-                                indicators["ema9"],
-                                indicators["ema21"],
-                                indicators["rsi14"]
-                            )
+                    upsert_indicators(
+                        symbol,
+                        indicators["ema9"],
+                        indicators["ema21"],
+                        indicators["rsi14"]
+                    )
 
                 except Exception as e:
-                    print("Tick error:", e)
+                    print("Tick processing error:", e, msg)
+
 
             ws.on_open = on_open
             ws.on_message = on_message

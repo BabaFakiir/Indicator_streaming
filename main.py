@@ -3,6 +3,8 @@ import datetime as dt
 import pyotp
 from SmartApi import SmartConnect
 from SmartApi.smartWebSocketV2 import SmartWebSocketV2
+from local_ws_server import broadcast
+
 
 from config import *
 from candle_aggregator import CandleAggregator
@@ -14,6 +16,9 @@ from supabase_writer import upsert_indicators
 # =========================
 
 aggregator = CandleAggregator()
+# token -> last indicators
+LAST_INDICATORS = {}
+
 
 # =========================
 # UTILITIES
@@ -45,7 +50,6 @@ def run_websocket():
 
             def on_open(_):
                 print("WebSocket connected")
-                print("Subscribing to tokens:", list(SYMBOLS.keys()))
                 ws.subscribe(
                     correlation_id="ema",
                     mode=1,
@@ -56,7 +60,6 @@ def run_websocket():
                 )
 
             def on_message(msg):
-                print("TICK RECEIVED")
                 try:
                     # ---- Guard: token ----
                     token = msg.get("token")
@@ -72,43 +75,52 @@ def run_websocket():
 
                     # ---- Timestamp ----
                     ts_ms = msg.get("exchange_timestamp")
-                    if ts_ms:
-                        ts = dt.datetime.fromtimestamp(ts_ms / 1000, tz=IST)
-                    else:
-                        ts = dt.datetime.now(IST)
+                    ts = (
+                        dt.datetime.fromtimestamp(ts_ms / 1000, tz=IST)
+                        if ts_ms else dt.datetime.now(IST)
+                    )
 
-                    # ---- Market hours guard ----
-                    # if not in_market_hours(ts):
-                    #     return
-
-                    # ---- Candle aggregation ----
-                    candles = aggregator.process_tick(token, price, ts)
-                    if candles is None:
-                        return
-
-                    # ---- Indicator calculation ----
-                    indicators = calculate_indicators(candles)
-                    if not indicators:
+                    # ---- Market hours ----
+                    if not in_market_hours(ts):
                         return
 
                     symbol = SYMBOLS[token]
 
-                    print(
-                        f"[{indicators['time']}] {symbol} | "
-                        f"EMA9={indicators['ema9']} | "
-                        f"EMA21={indicators['ema21']} | "
-                        f"RSI14={indicators['rsi14']}"
-                    )
+                    # ---- Candle aggregation (may or may not close candle) ----
+                    candles = aggregator.process_tick(token, price, ts)
 
-                    upsert_indicators(
-                        symbol,
-                        indicators["ema9"],
-                        indicators["ema21"],
-                        indicators["rsi14"]
-                    )
+                    # ---- Indicator update ONLY on candle close ----
+                    if candles is not None:
+                        indicators = calculate_indicators(candles)
+                        if indicators:
+                            LAST_INDICATORS[token] = indicators
+
+                            upsert_indicators(
+                                symbol,
+                                indicators["ema9"],
+                                indicators["ema21"],
+                                indicators["rsi14"]
+                            )
+
+                    # ---- Fetch last known indicators ----
+                    last = LAST_INDICATORS.get(token)
+
+                    # ---- STREAM EVERY TICK ----
+                    broadcast({
+                        "symbol": symbol,
+                        "token": token,
+                        "timestamp": ts.isoformat(),
+                        "price": price,
+                        "ema9": last["ema9"] if last else None,
+                        "ema21": last["ema21"] if last else None,
+                        "rsi14": last["rsi14"] if last else None,
+                        "indicator_time": last["time"].isoformat() if last else None
+                    })
+
 
                 except Exception as e:
                     print("Tick processing error:", e, msg)
+
 
 
             ws.on_open = on_open

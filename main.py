@@ -9,7 +9,8 @@ from local_ws_server import broadcast
 from config import *
 from candle_aggregator import CandleAggregator
 from ema_calculator import calculate_indicators
-from supabase_writer import upsert_indicators
+from tell_trend import tell_trend
+import pandas as pd
 
 # =========================
 # GLOBAL STATE
@@ -18,6 +19,8 @@ from supabase_writer import upsert_indicators
 aggregator = CandleAggregator()
 # token -> last indicators
 LAST_INDICATORS = {}
+# token -> last trend (BULLISH, BEARISH, SIDEWAYS, or None)
+LAST_TRENDS = {}
 
 
 # =========================
@@ -91,21 +94,27 @@ def run_websocket():
 
                     # ---- Indicator update ONLY on candle close ----
                     if candles is not None:
+                        # Calculate EMA indicators for ema_crossover strategy
                         indicators = calculate_indicators(candles)
                         if indicators:
                             LAST_INDICATORS[token] = indicators
+                        
+                        # Calculate trend for stock-15min strategy (need at least 20 candles)
+                        if len(candles) >= 20:
+                            try:
+                                # Convert candles to DataFrame for tell_trend
+                                df = pd.DataFrame(list(candles))
+                                trend = tell_trend(df)
+                                LAST_TRENDS[token] = trend
+                            except Exception as e:
+                                print(f"Trend calculation error for {symbol}: {e}")
 
-                            upsert_indicators(
-                                symbol,
-                                indicators["ema9"],
-                                indicators["ema21"],
-                                indicators["rsi14"]
-                            )
-
-                    # ---- Fetch last known indicators ----
+                    # ---- Fetch last known indicators and trend ----
                     last = LAST_INDICATORS.get(token)
+                    trend = LAST_TRENDS.get(token)
 
                     # ---- STREAM EVERY TICK ----
+                    # Broadcast for ema_crossover strategy
                     broadcast({
                         "symbol": symbol,
                         "token": token,
@@ -115,7 +124,16 @@ def run_websocket():
                         "ema21": last["ema21"] if last else None,
                         "rsi14": last["rsi14"] if last else None,
                         "indicator_time": last["time"].isoformat() if last else None
-                    })
+                    }, strategy="ema_crossover")
+                    
+                    # Broadcast for stock-15min strategy
+                    broadcast({
+                        "symbol": symbol,
+                        "token": token,
+                        "timestamp": ts.isoformat(),
+                        "price": price,
+                        "trend": trend
+                    }, strategy="stock-15min")
 
 
                 except Exception as e:

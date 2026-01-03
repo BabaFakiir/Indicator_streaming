@@ -19,7 +19,18 @@ SYMBOLS = {
     "6066": "ATGL",
     "25": "ADANIENT",
     "3456": "TATAMOTORS",
-    "17939": "HINDCOPPER"
+    "17939": "HINDCOPPER",
+    "2885": "RELIANCE",
+    "1333": "HDFCBANK",
+    "3787": "WIPRO",
+    "1594": "INFY",
+    "16682": "PTCIL",
+    "3906": "CAPLIPOINT",
+    "1964": "TRENT",
+    "1621": "TATAINVEST",
+    "18011": "WHIRLPOOL",
+    "25718": "POLYMED",
+    "1675": "ITI"
 }
 
 SUPABASE_URL = "https://fbcequeftvgcysbrjuma.supabase.co"

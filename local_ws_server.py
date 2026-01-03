@@ -3,7 +3,8 @@ import json
 import threading
 import websockets
 
-# websocket -> set(symbols)
+# websocket -> dict mapping symbol to strategy
+# Example: {"TCS": "ema_crossover", "ICICI": "stock-15min"}
 CLIENT_SUBSCRIPTIONS = {}
 EVENT_LOOP = asyncio.new_event_loop()
 
@@ -11,7 +12,7 @@ EVENT_LOOP = asyncio.new_event_loop()
 # WebSocket Handler
 # -------------------------
 async def handler(websocket):
-    CLIENT_SUBSCRIPTIONS[websocket] = set()
+    CLIENT_SUBSCRIPTIONS[websocket] = {}
 
     try:
         async for message in websocket:
@@ -19,11 +20,31 @@ async def handler(websocket):
 
             # subscription message
             if data.get("action") == "subscribe":
-                symbols = set(data.get("symbols", []))
-                CLIENT_SUBSCRIPTIONS[websocket] = symbols
+                subscriptions = {}
+                
+                # Support new format: {"action": "subscribe", "subscriptions": [{"symbol": "TCS", "strategy": "ema_crossover"}]}
+                if "subscriptions" in data:
+                    for sub in data["subscriptions"]:
+                        symbol = sub.get("symbol")
+                        strategy = sub.get("strategy", "ema_crossover")  # default to ema_crossover
+                        if symbol:
+                            subscriptions[symbol] = strategy
+                
+                # Support legacy format: {"action": "subscribe", "symbols": ["TCS", "ICICI"]} (defaults to ema_crossover)
+                elif "symbols" in data:
+                    for symbol in data["symbols"]:
+                        subscriptions[symbol] = "ema_crossover"
+                
+                # Support single subscription: {"action": "subscribe", "symbol": "TCS", "strategy": "stock-15min"}
+                elif "symbol" in data:
+                    symbol = data["symbol"]
+                    strategy = data.get("strategy", "ema_crossover")
+                    subscriptions[symbol] = strategy
+                
+                CLIENT_SUBSCRIPTIONS[websocket] = subscriptions
                 await websocket.send(json.dumps({
                     "status": "subscribed",
-                    "symbols": list(symbols)
+                    "subscriptions": subscriptions
                 }))
 
     finally:
@@ -45,13 +66,18 @@ threading.Thread(target=run_server, daemon=True).start()
 # -------------------------
 # Broadcast Function
 # -------------------------
-def broadcast(tick: dict):
+def broadcast(tick: dict, strategy: str = None):
     symbol = tick["symbol"]
 
     coros = []
-    for ws, symbols in CLIENT_SUBSCRIPTIONS.items():
-        if symbol in symbols:
-            coros.append(ws.send(json.dumps(tick)))
+    for ws, subscriptions in CLIENT_SUBSCRIPTIONS.items():
+        # Check if client is subscribed to this symbol with matching strategy
+        if symbol in subscriptions:
+            client_strategy = subscriptions[symbol]
+            # If strategy is specified in broadcast, only send to matching strategy subscriptions
+            # If strategy is None, send to all subscriptions for this symbol (backward compatibility)
+            if strategy is None or client_strategy == strategy:
+                coros.append(ws.send(json.dumps(tick)))
 
     if coros:
         asyncio.run_coroutine_threadsafe(

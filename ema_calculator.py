@@ -2,7 +2,7 @@ import pandas as pd
 import talib
 
 def calculate_indicators(candle_queue):
-    if len(candle_queue) < 21:
+    if len(candle_queue) < 1:
         return None
 
     df = pd.DataFrame(list(candle_queue))

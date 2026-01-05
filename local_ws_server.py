@@ -80,7 +80,8 @@ def broadcast(tick: dict, strategy: str = None):
     symbol = tick["symbol"]
     message = json.dumps(tick)
 
-    coros = []
+    # Collect websockets to send to
+    websockets_to_send = []
     for ws, subscriptions in CLIENT_SUBSCRIPTIONS.items():
         # Check if client is subscribed to this symbol with matching strategy
         if symbol in subscriptions:
@@ -88,14 +89,19 @@ def broadcast(tick: dict, strategy: str = None):
             # If strategy is specified in broadcast, only send to matching strategy subscriptions
             # If strategy is None, send to all subscriptions for this symbol (backward compatibility)
             if strategy is None or client_strategy == strategy:
-                # Create coroutine using helper function
-                coros.append(_send_message(ws, message))
+                websockets_to_send.append(ws)
 
-    if coros:
+    if websockets_to_send:
+        # Create a single coroutine that sends to all websockets
+        async def send_all():
+            tasks = []
+            for ws in websockets_to_send:
+                tasks.append(_send_message(ws, message))
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+        
         try:
-            asyncio.run_coroutine_threadsafe(
-                asyncio.gather(*coros, return_exceptions=True),
-                EVENT_LOOP
-            )
+            # Schedule the coroutine on the event loop
+            asyncio.run_coroutine_threadsafe(send_all(), EVENT_LOOP)
         except Exception as e:
             print(f"Broadcast error: {e}")

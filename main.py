@@ -87,6 +87,10 @@ def run_websocket():
                     if not in_market_hours(ts):
                         return
 
+                    # ---- Guard: token must be in SYMBOLS ----
+                    if token not in SYMBOLS:
+                        return
+                    
                     symbol = SYMBOLS[token]
 
                     # ---- Candle aggregation (may or may not close candle) ----
@@ -115,15 +119,19 @@ def run_websocket():
 
                     # ---- STREAM EVERY TICK ----
                     # Broadcast for ema_crossover strategy
+                    indicator_time = None
+                    if last and last.get("time"):
+                        indicator_time = last.get("time").isoformat()
+                    
                     broadcast({
                         "symbol": symbol,
                         "token": token,
                         "timestamp": ts.isoformat(),
                         "price": price,
-                        "ema9": last["ema9"] if last else None,
-                        "ema21": last["ema21"] if last else None,
-                        "rsi14": last["rsi14"] if last else None,
-                        "indicator_time": last["time"].isoformat() if last else None
+                        "ema9": last.get("ema9") if last else None,
+                        "ema21": last.get("ema21") if last else None,
+                        "rsi14": last.get("rsi14") if last else None,
+                        "indicator_time": indicator_time
                     }, strategy="ema_crossover")
                     
                     # Broadcast for stock-15min strategy
@@ -137,7 +145,10 @@ def run_websocket():
 
 
                 except Exception as e:
-                    print("Tick processing error:", e, msg)
+                    import traceback
+                    print(f"Tick processing error for token {token if 'token' in locals() else 'unknown'}: {e}")
+                    print(f"Error details: {traceback.format_exc()}")
+                    print(f"Message: {msg}")
 
 
 

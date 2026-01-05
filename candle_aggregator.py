@@ -11,6 +11,10 @@ class CandleAggregator:
             "queues",
             {t: deque(maxlen=21) for t in SYMBOLS}
         )
+        # Ensure all tokens in SYMBOLS have queues (in case new tokens were added)
+        for token in SYMBOLS:
+            if token not in self.queues:
+                self.queues[token] = deque(maxlen=21)
 
     def _persist(self):
         save_state({
@@ -27,6 +31,10 @@ class CandleAggregator:
 
     def process_tick(self, token, ltp, timestamp):
         candle_time = self._floor_5min(timestamp)
+
+        # Ensure queue exists for this token (in case it was added dynamically)
+        if token not in self.queues:
+            self.queues[token] = deque(maxlen=21)
 
         if token not in self.current:
             self.current[token] = self._new_candle(candle_time, ltp)

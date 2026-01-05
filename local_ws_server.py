@@ -64,10 +64,21 @@ def run_server():
 threading.Thread(target=run_server, daemon=True).start()
 
 # -------------------------
+# Helper async function for sending
+# -------------------------
+async def _send_message(websocket, message):
+    try:
+        await websocket.send(message)
+    except Exception as e:
+        # Silently ignore errors (websocket might be closed)
+        pass
+
+# -------------------------
 # Broadcast Function
 # -------------------------
 def broadcast(tick: dict, strategy: str = None):
     symbol = tick["symbol"]
+    message = json.dumps(tick)
 
     coros = []
     for ws, subscriptions in CLIENT_SUBSCRIPTIONS.items():
@@ -77,10 +88,14 @@ def broadcast(tick: dict, strategy: str = None):
             # If strategy is specified in broadcast, only send to matching strategy subscriptions
             # If strategy is None, send to all subscriptions for this symbol (backward compatibility)
             if strategy is None or client_strategy == strategy:
-                coros.append(ws.send(json.dumps(tick)))
+                # Create coroutine using helper function
+                coros.append(_send_message(ws, message))
 
     if coros:
-        asyncio.run_coroutine_threadsafe(
-            asyncio.gather(*coros),
-            EVENT_LOOP
-        )
+        try:
+            asyncio.run_coroutine_threadsafe(
+                asyncio.gather(*coros, return_exceptions=True),
+                EVENT_LOOP
+            )
+        except Exception as e:
+            print(f"Broadcast error: {e}")

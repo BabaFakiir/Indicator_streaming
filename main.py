@@ -3,7 +3,7 @@ import datetime as dt
 import pyotp
 from SmartApi import SmartConnect
 from SmartApi.smartWebSocketV2 import SmartWebSocketV2
-from app import broadcast
+from broadcaster import broadcast
 
 
 from config import *
@@ -46,6 +46,7 @@ def run_websocket():
     Blocks forever.
     Handles reconnect + session regeneration.
     """
+    print("Tick processor: Starting WebSocket connection to SmartAPI...")
     while True:
         try:
             jwt, feed = login()

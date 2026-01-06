@@ -12,11 +12,13 @@ EVENT_LOOP = asyncio.new_event_loop()
 # WebSocket Handler
 # -------------------------
 async def handler(websocket):
+    print(f"New WebSocket connection: {websocket.remote_address}")
     CLIENT_SUBSCRIPTIONS[websocket] = {}
 
     try:
         async for message in websocket:
             data = json.loads(message)
+            print(f"Received message: {data}")
 
             # subscription message
             if data.get("action") == "subscribe":
@@ -42,13 +44,21 @@ async def handler(websocket):
                     subscriptions[symbol] = strategy
                 
                 CLIENT_SUBSCRIPTIONS[websocket] = subscriptions
+                print(f"Client subscribed: {subscriptions}")
                 await websocket.send(json.dumps({
                     "status": "subscribed",
                     "subscriptions": subscriptions
                 }))
 
+    except websockets.exceptions.ConnectionClosed:
+        print(f"WebSocket connection closed: {websocket.remote_address}")
+    except Exception as e:
+        print(f"WebSocket handler error: {e}")
+        import traceback
+        traceback.print_exc()
     finally:
         CLIENT_SUBSCRIPTIONS.pop(websocket, None)
+        print(f"Client unsubscribed: {websocket.remote_address}")
 
 # -------------------------
 # Server Runner
@@ -69,9 +79,13 @@ threading.Thread(target=run_server, daemon=True).start()
 async def _send_message(websocket, message):
     try:
         await websocket.send(message)
-    except Exception as e:
-        # Silently ignore errors (websocket might be closed)
+    except websockets.exceptions.ConnectionClosed:
+        # Connection closed, this is expected
         pass
+    except Exception as e:
+        # Log other errors for debugging
+        print(f"WebSocket send error: {type(e).__name__}: {e}")
+        raise  # Re-raise to be caught by gather
 
 # -------------------------
 # Broadcast Function
@@ -91,17 +105,35 @@ def broadcast(tick: dict, strategy: str = None):
             if strategy is None or client_strategy == strategy:
                 websockets_to_send.append(ws)
 
-    if websockets_to_send:
-        # Create a single coroutine that sends to all websockets
-        async def send_all():
-            tasks = []
-            for ws in websockets_to_send:
-                tasks.append(_send_message(ws, message))
-            if tasks:
-                await asyncio.gather(*tasks, return_exceptions=True)
-        
-        try:
-            # Schedule the coroutine on the event loop
-            asyncio.run_coroutine_threadsafe(send_all(), EVENT_LOOP)
-        except Exception as e:
-            print(f"Broadcast error: {e}")
+    if not websockets_to_send:
+        # No subscribers for this symbol/strategy combination
+        return
+
+    # Check if event loop is running
+    if not EVENT_LOOP.is_running():
+        print(f"Warning: Event loop is not running, cannot broadcast to {len(websockets_to_send)} clients")
+        return
+
+    # Create a single coroutine that sends to all websockets
+    # Capture variables in the closure
+    ws_list = websockets_to_send.copy()  # Make a copy to avoid closure issues
+    msg = message  # Local copy
+    
+    async def send_all():
+        tasks = []
+        for ws in ws_list:
+            tasks.append(_send_message(ws, msg))
+        if tasks:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            # Log any exceptions
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    print(f"Broadcast send error to client {i}: {result}")
+
+    try:
+        # Schedule the coroutine on the event loop
+        future = asyncio.run_coroutine_threadsafe(send_all(), EVENT_LOOP)
+    except Exception as e:
+        print(f"Broadcast scheduling error: {e}")
+        import traceback
+        traceback.print_exc()

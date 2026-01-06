@@ -3,7 +3,7 @@ import datetime as dt
 import pyotp
 from SmartApi import SmartConnect
 from SmartApi.smartWebSocketV2 import SmartWebSocketV2
-from local_ws_server import broadcast
+from app import broadcast
 
 
 from config import *

@@ -6,3 +6,6 @@ smartapi-python
 websocket-client
 supabase
 logzero
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+websockets==12.0

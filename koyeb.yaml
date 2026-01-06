@@ -1,0 +1,10 @@
+# Koyeb configuration file
+# This file is optional - Koyeb can auto-detect Python apps
+# But you can use it to customize the build and run commands
+
+build:
+  command: pip install -r requirements.txt
+
+run:
+  command: python start_server.py
+

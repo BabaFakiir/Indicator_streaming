@@ -2,3 +2,7 @@
 [E 260105 14:50:01 smartWebSocketV2:303] Error occurred during WebSocket connection: WebSocket error
 [W 260105 15:00:02 smartWebSocketV2:318] Attempting to resubscribe/reconnect (Attempt 1)...
 [E 260105 15:00:03 smartWebSocketV2:303] Error occurred during WebSocket connection: WebSocket error
+[W 260105 19:33:26 smartWebSocketV2:318] Attempting to resubscribe/reconnect (Attempt 1)...
+[E 260105 22:27:06 smartWebSocketV2:303] Error occurred during WebSocket connection: WebSocket error
+[E 260105 22:27:06 smartWebSocketV2:332] Error occurred during resubscribe/reconnect: WebSocket error
+[E 260105 22:27:06 smartWebSocketV2:303] Error occurred during WebSocket connection: WebSocket error

@@ -91,7 +91,7 @@ def run_websocket():
                     # ---- Guard: token must be in SYMBOLS ----
                     if token not in SYMBOLS:
                         return
-                    
+
                     symbol = SYMBOLS[token]
 
                     # ---- Candle aggregation (may or may not close candle) ----
@@ -103,7 +103,7 @@ def run_websocket():
                         indicators = calculate_indicators(candles)
                         if indicators:
                             LAST_INDICATORS[token] = indicators
-                        
+
                         # Calculate trend for stock-15min strategy (need at least 20 candles)
                         if len(candles) >= 20:
                             try:

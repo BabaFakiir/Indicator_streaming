@@ -30,7 +30,8 @@ SYMBOLS = {
     "1621": "TATAINVEST",
     "18011": "WHIRLPOOL",
     "25718": "POLYMED",
-    "1675": "ITI"
+    "1675": "ITI",
+    "99926000": "NIFTY50"
 }
 
 SUPABASE_URL = "https://fbcequeftvgcysbrjuma.supabase.co"

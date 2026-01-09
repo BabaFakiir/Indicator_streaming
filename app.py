@@ -77,15 +77,8 @@ async def health():
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    # Log connection attempt details
-    logger.info(f"WebSocket connection attempt from {websocket.client}")
-    logger.info(f"Headers: {dict(websocket.headers)}")
-    
-    # Accept the WebSocket connection
-    # This should handle CORS and origin checking
     try:
         await websocket.accept()
-        logger.info(f"WebSocket connection accepted: {websocket.client}")
     except Exception as e:
         logger.error(f"Failed to accept WebSocket connection: {e}", exc_info=True)
         return
@@ -99,16 +92,24 @@ async def websocket_endpoint(websocket: WebSocket):
             if data.get("action") == "subscribe":
                 subs = {}
                 for sub in data.get("subscriptions", []):
-                    subs[sub["symbol"]] = sub.get("strategy", "ema_crossover")
+                    symbol = sub.get("symbol")
+                    strategy = sub.get("strategy", "ema_crossover")
+                    if symbol:
+                        # Store strategies as a set to support multiple strategies per symbol
+                        if symbol not in subs:
+                            subs[symbol] = set()
+                        subs[symbol].add(strategy)
+                # Convert sets to lists for JSON serialization in response
+                subs_for_response = {k: list(v) for k, v in subs.items()}
                 CLIENT_SUBSCRIPTIONS[websocket] = subs
-                logger.info(f"Client subscribed: {subs}")
-                await websocket.send_json({"status": "subscribed", "subscriptions": subs})
+                await websocket.send_json({"status": "subscribed", "subscriptions": subs_for_response})
+            elif data.get("action") == "ping":
+                await websocket.send_json({"status": "pong"})
 
     except WebSocketDisconnect:
-        logger.info(f"WebSocket disconnected: {websocket.client}")
+        pass
     except Exception as e:
         logger.error(f"WebSocket error: {e}", exc_info=True)
     finally:
         CLIENT_SUBSCRIPTIONS.pop(websocket, None)
-        logger.info(f"Client unsubscribed: {websocket.client}")
 

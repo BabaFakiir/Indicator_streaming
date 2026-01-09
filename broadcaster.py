@@ -7,7 +7,7 @@ from fastapi import WebSocket
 
 logger = logging.getLogger(__name__)
 
-CLIENT_SUBSCRIPTIONS: Dict[WebSocket, Dict[str, str]] = {}
+CLIENT_SUBSCRIPTIONS: Dict[WebSocket, Dict[str, set]] = {}
 MAIN_LOOP = None
 
 
@@ -23,11 +23,15 @@ def broadcast(tick: dict, strategy: str = None):
     websockets_to_send = []
     for ws, subscriptions in CLIENT_SUBSCRIPTIONS.items():
         if symbol in subscriptions:
-            client_strategy = subscriptions[symbol]
-            if strategy is None or client_strategy == strategy:
+            client_strategies = subscriptions[symbol]
+            # If strategy is None, send to all subscribers of this symbol
+            # Otherwise, send only if client subscribed to this specific strategy
+            if strategy is None or strategy in client_strategies:
                 websockets_to_send.append(ws)
 
     if not websockets_to_send:
+        # Quick debug - uncomment if needed
+        # print(f"No subscribers for {symbol} with strategy {strategy}. Total clients: {len(CLIENT_SUBSCRIPTIONS)}")
         return
 
     async def send_all():

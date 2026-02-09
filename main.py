@@ -131,6 +131,7 @@ def run_websocket():
                         "price": price,
                         "ema9": last.get("ema9") if last else None,
                         "ema21": last.get("ema21") if last else None,
+                        "ema34": last.get("ema34") if last else None,
                         "rsi14": last.get("rsi14") if last else None,
                         "indicator_time": indicator_time
                     }, strategy="ema_crossover")

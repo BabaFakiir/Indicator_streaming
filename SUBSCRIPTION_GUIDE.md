@@ -87,6 +87,7 @@ After sending a subscription message, you'll receive a confirmation:
   "price": 3456.75,
   "ema9": 3450.25,
   "ema21": 3445.50,
+  "ema34": 3440.75,
   "rsi14": 58.75,
   "indicator_time": "2026-01-02T10:30:00+05:30"
 }
@@ -97,12 +98,13 @@ After sending a subscription message, you'll receive a confirmation:
 - `token`: Token ID for the stock
 - `timestamp`: Current tick timestamp (ISO format)
 - `price`: Last traded price
-- `ema9`: 9-period EMA value (or `null` if not calculated yet)
-- `ema21`: 21-period EMA value (or `null` if not calculated yet)
+- `ema9`: 9-period EMA value on 5-minute candles (or `null` if not calculated yet)
+- `ema21`: 21-period EMA value on 5-minute candles (or `null` if not calculated yet)
+- `ema34`: 34-period EMA value on 5-minute candles (or `null` if not calculated yet)
 - `rsi14`: 14-period RSI value (or `null` if not calculated yet)
 - `indicator_time`: Timestamp of the last 5-minute candle close (or `null`)
 
-**Note:** Indicators are updated only when a 5-minute candle closes. Until then, `ema9`, `ema21`, `rsi14`, and `indicator_time` will be `null`.
+**Note:** Indicators are updated only when a 5-minute candle closes. Until then, `ema9`, `ema21`, `ema34`, `rsi14`, and `indicator_time` will be `null`.
 
 ---
 
@@ -167,7 +169,7 @@ async def subscribe_example():
             
             # Handle based on strategy
             if "ema9" in data:
-                print(f"EMA Strategy - {data['symbol']}: Price={data['price']}, EMA9={data['ema9']}, EMA21={data['ema21']}, RSI={data['rsi14']}")
+                print(f"EMA Strategy - {data['symbol']}: Price={data['price']}, EMA9={data['ema9']}, EMA21={data['ema21']}, EMA34={data['ema34']}, RSI={data['rsi14']}")
             elif "trend" in data:
                 print(f"Trend Strategy - {data['symbol']}: Price={data['price']}, Trend={data['trend']}")
 
@@ -208,7 +210,7 @@ ws.on('message', (data) => {
   
   // Handle tick data
   if (message.ema9 !== undefined) {
-    console.log(`EMA Strategy - ${message.symbol}: Price=${message.price}, EMA9=${message.ema9}, EMA21=${message.ema21}, RSI=${message.rsi14}`);
+    console.log(`EMA Strategy - ${message.symbol}: Price=${message.price}, EMA9=${message.ema9}, EMA21=${message.ema21}, EMA34=${message.ema34}, RSI=${message.rsi14}`);
   } else if (message.trend !== undefined) {
     console.log(`Trend Strategy - ${message.symbol}: Price=${message.price}, Trend=${message.trend}`);
   }

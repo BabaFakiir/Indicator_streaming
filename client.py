@@ -42,7 +42,7 @@ async def main():
                     if "ema9" in data:
                         # ema_crossover strategy message
                         print(f"[EMA] {data['symbol']}: Price={data['price']}, "
-                              f"EMA9={data['ema9']}, EMA21={data['ema21']}, "
+                              f"EMA9={data['ema9']}, EMA21={data['ema21']}, EMA34={data['ema34']}, "
                               f"RSI={data['rsi14']}")
                     elif "trend" in data:
                         # stock-15min strategy message

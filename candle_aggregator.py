@@ -7,14 +7,15 @@ class CandleAggregator:
     def __init__(self):
         cached = load_state() or {}
         self.current = cached.get("current", {})
+        # Store at least 34 candles for EMA34 calculation (plus some buffer)
         self.queues = cached.get(
             "queues",
-            {t: deque(maxlen=21) for t in SYMBOLS}
+            {t: deque(maxlen=40) for t in SYMBOLS}
         )
         # Ensure all tokens in SYMBOLS have queues (in case new tokens were added)
         for token in SYMBOLS:
             if token not in self.queues:
-                self.queues[token] = deque(maxlen=21)
+                self.queues[token] = deque(maxlen=40)
 
     def _persist(self):
         save_state({
@@ -34,7 +35,7 @@ class CandleAggregator:
 
         # Ensure queue exists for this token (in case it was added dynamically)
         if token not in self.queues:
-            self.queues[token] = deque(maxlen=21)
+            self.queues[token] = deque(maxlen=40)
 
         if token not in self.current:
             self.current[token] = self._new_candle(candle_time, ltp)

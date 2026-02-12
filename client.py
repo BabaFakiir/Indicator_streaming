@@ -4,7 +4,7 @@ import json
 
 async def main():
     # For local development
-    uri = "ws://localhost:8000/ws"
+    uri = "wss://indicatorstreaming-production.up.railway.app/ws"
     # For Koyeb deployment, use: uri = "wss://your-app-name.koyeb.app/ws"
     
     async with websockets.connect(uri) as ws:
@@ -14,7 +14,7 @@ async def main():
         subscription = {
             "action": "subscribe",
             "subscriptions": [
-                {"symbol": "NIFTY50", "strategy": "stock-15min"}
+                {"symbol": "BANKNIFTY", "strategy": "ema_crossover"}
             ]
         }
         

@@ -14,7 +14,7 @@ async def main():
         subscription = {
             "action": "subscribe",
             "subscriptions": [
-                {"symbol": "BANKNIFTY", "strategy": "ema_crossover"}
+                {"symbol": "BANKNIFTY", "strategy": "bank_nity_ema"}
             ]
         }
         

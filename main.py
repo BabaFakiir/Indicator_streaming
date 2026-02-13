@@ -21,6 +21,9 @@ aggregator = CandleAggregator()
 LAST_INDICATORS = {}
 # token -> last trend (BULLISH, BEARISH, SIDEWAYS, or None)
 LAST_TRENDS = {}
+# For BANKNIFTY: track first candle of day and ATM strike
+BANKNIFTY_FIRST_CANDLE = {}  # token -> {"date": date, "open": price}
+BANKNIFTY_ATM_STRIKE = {}  # token -> strike value
 
 
 # =========================
@@ -97,6 +100,28 @@ def run_websocket():
                     # ---- Candle aggregation (may or may not close candle) ----
                     candles = aggregator.process_tick(token, price, ts)
 
+                    # ---- Track first candle of day for BANKNIFTY (for ATM strike calculation) ----
+                    if symbol == "BANKNIFTY":
+                        current_date = ts.date()
+                        # Check if we need to calculate ATM strike for today
+                        if token not in BANKNIFTY_FIRST_CANDLE or BANKNIFTY_FIRST_CANDLE[token].get("date") != current_date:
+                            # When a candle closes, capture the first candle's open price
+                            if candles is not None and len(candles) > 0:
+                                # Get the oldest candle (first one in queue) - this is the first candle of the day
+                                first_candle = candles[0]
+                                first_candle_open = first_candle["open"]
+                                
+                                BANKNIFTY_FIRST_CANDLE[token] = {
+                                    "date": current_date,
+                                    "open": first_candle_open
+                                }
+                                
+                                # Calculate ATM strike: convert to decimal, round to nearest 100
+                                # Example: 6035300 / 100 = 60353, round(60353/100)*100 = 60400
+                                price_decimal = first_candle_open / 100
+                                atm_strike = round(price_decimal / 100) * 100
+                                BANKNIFTY_ATM_STRIKE[token] = atm_strike
+
                     # ---- Indicator update ONLY on candle close ----
                     if candles is not None:
                         # Calculate EMA indicators for ema_crossover strategy
@@ -144,6 +169,19 @@ def run_websocket():
                         "price": price,
                         "trend": trend
                     }, strategy="stock-15min")
+                    
+                    # Broadcast for bank_nifty_ema strategy (BANKNIFTY only)
+                    if symbol == "BANKNIFTY":
+                        atm_strike = BANKNIFTY_ATM_STRIKE.get(token)
+                        broadcast({
+                            "symbol": symbol,
+                            "token": token,
+                            "timestamp": ts.isoformat(),
+                            "price": price,
+                            "ema21": last.get("ema21") if last else None,
+                            "ema34": last.get("ema34") if last else None,
+                            "strike": atm_strike
+                        }, strategy="bank_nifty_ema")
 
 
                 except Exception as e:

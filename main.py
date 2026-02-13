@@ -178,6 +178,7 @@ def run_websocket():
                             "token": token,
                             "timestamp": ts.isoformat(),
                             "price": price,
+                            "ltp": price,
                             "ema21": last.get("ema21") if last else None,
                             "ema34": last.get("ema34") if last else None,
                             "strike": atm_strike

@@ -103,21 +103,56 @@ def run_websocket():
                     # ---- Track first candle of day for BANKNIFTY (for ATM strike calculation) ----
                     if symbol == "BANKNIFTY":
                         current_date = ts.date()
-                        # Check if we need to calculate ATM strike for today
-                        if token not in BANKNIFTY_FIRST_CANDLE or BANKNIFTY_FIRST_CANDLE[token].get("date") != current_date:
-                            # When a candle closes, capture the first candle's open price
+                        stored_date = BANKNIFTY_FIRST_CANDLE.get(token, {}).get("date")
+                        
+                        # Reset strike if it's a new day (explicit date comparison)
+                        needs_reset = False
+                        if stored_date is None:
+                            needs_reset = True
+                        elif isinstance(stored_date, dt.date):
+                            needs_reset = stored_date != current_date
+                        else:
+                            # Handle case where stored_date might be a string or other type
+                            needs_reset = True
+                        
+                        if needs_reset:
+                            # Clear old strike for new day
+                            BANKNIFTY_ATM_STRIKE[token] = None
+                            BANKNIFTY_FIRST_CANDLE[token] = {}
+                            
+                            # Try to get the first candle of TODAY
+                            first_candle_open = None
+                            
+                            # Option 1: Check if we have a closed candle for today
                             if candles is not None and len(candles) > 0:
-                                # Get the oldest candle (first one in queue) - this is the first candle of the day
-                                first_candle = candles[0]
-                                first_candle_open = first_candle["open"]
-                                
+                                # Find the first candle that belongs to today
+                                for candle in candles:
+                                    candle_date = candle["time"].date()
+                                    if candle_date == current_date:
+                                        first_candle_open = candle["open"]
+                                        break
+                            
+                            # Option 2: If no closed candle yet, check if we're in the first candle period
+                            if first_candle_open is None:
+                                # Check if we're in the first 5-minute period of the day (9:15-9:20)
+                                if ts.hour == 9 and 15 <= ts.minute < 20:
+                                    # This is the first candle of the day
+                                    # Get the open price from the aggregator's current candle
+                                    current_candle = aggregator.current.get(token)
+                                    if current_candle and current_candle.get("time").date() == current_date:
+                                        first_candle_open = current_candle.get("open", price)
+                                    else:
+                                        first_candle_open = price
+                            
+                            # Calculate strike if we have an opening price
+                            if first_candle_open is not None:
                                 BANKNIFTY_FIRST_CANDLE[token] = {
                                     "date": current_date,
                                     "open": first_candle_open
                                 }
                                 
                                 # Calculate ATM strike: convert to decimal, round to nearest 100
-                                # Example: 6035300 / 100 = 60353, round(60353/100)*100 = 60400
+                                # Example: 5994780 / 100 = 59947.8, round(59947.8/100)*100 = round(599.478)*100 = 599*100 = 59900
                                 price_decimal = first_candle_open / 100
                                 atm_strike = round(price_decimal / 100) * 100
                                 BANKNIFTY_ATM_STRIKE[token] = atm_strike

@@ -14,7 +14,6 @@ async def main():
         subscription = {
             "action": "subscribe",
             "subscriptions": [
-                {"symbol": "BANKNIFTY24FEB2660800CE", "strategy": "bank_nifty_ema"},
                 {"symbol": "BANKNIFTY24FEB2660800PE", "strategy": "bank_nifty_ema"}
             ]
         }
@@ -49,6 +48,11 @@ async def main():
                         # stock-15min strategy message
                         print(f"[TREND] {data['symbol']}: Price={data['price']}, "
                               f"Trend={data['trend']}")
+                    elif "strike" in data:
+                        # bank_nifty_ema strategy message
+                        print(f"[BANK_NIFTY_EMA] {data['symbol']}: Price={data['price']}, "
+                              f"LTP={data.get('ltp')}, EMA21={data.get('ema21')}, EMA34={data.get('ema34')}, "
+                              f"Strike={data.get('strike')}, High={data.get('high')}, Low={data.get('low')}")
                     else:
                         print(f"Unknown message: {data}")
                         

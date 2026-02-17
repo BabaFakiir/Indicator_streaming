@@ -28,10 +28,19 @@ def broadcast(tick: dict, strategy: str = None):
             # Otherwise, send only if client subscribed to this specific strategy
             if strategy is None or strategy in client_strategies:
                 websockets_to_send.append(ws)
+    
+    # Debug logging for bank_nifty_ema
+    if strategy == "bank_nifty_ema":
+        logger.info(f"Broadcasting {strategy} for {symbol}: {len(websockets_to_send)} clients, total clients: {len(CLIENT_SUBSCRIPTIONS)}")
+        if CLIENT_SUBSCRIPTIONS:
+            for ws, subs in CLIENT_SUBSCRIPTIONS.items():
+                logger.info(f"  Client subscriptions: {subs}")
 
     if not websockets_to_send:
-        # Quick debug - uncomment if needed
-        # print(f"No subscribers for {symbol} with strategy {strategy}. Total clients: {len(CLIENT_SUBSCRIPTIONS)}")
+        # Debug: log when no subscribers found
+        logger.debug(f"No subscribers for {symbol} with strategy {strategy}. Total clients: {len(CLIENT_SUBSCRIPTIONS)}")
+        if CLIENT_SUBSCRIPTIONS:
+            logger.debug(f"Current subscriptions: {[(list(ws.subscriptions.keys()) if hasattr(ws, 'subscriptions') else 'N/A') for ws in CLIENT_SUBSCRIPTIONS.keys()]}")
         return
 
     async def send_all():

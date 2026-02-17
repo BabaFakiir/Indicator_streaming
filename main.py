@@ -97,7 +97,7 @@ def run_websocket():
 
                     symbol = SYMBOLS[token]
                     
-                    # Debug: log ticks for BANKNIFTY options
+                    # Debug: log ALL ticks (not just BANKNIFTY) to see what's being received
                     if symbol.startswith("BANKNIFTY"):
                         print(f"Tick received: {symbol} (token {token}), price={price}")
 

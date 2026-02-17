@@ -96,10 +96,6 @@ def run_websocket():
                         return
 
                     symbol = SYMBOLS[token]
-                    
-                    # Debug: log ALL ticks (not just BANKNIFTY) to see what's being received
-                    if symbol.startswith("BANKNIFTY"):
-                        print(f"Tick received: {symbol} (token {token}), price={price}")
 
                     # ---- Candle aggregation (may or may not close candle) ----
                     candles = aggregator.process_tick(token, price, ts)
@@ -250,9 +246,6 @@ def run_websocket():
                         # For underlying BANKNIFTY, use its own indicators
                         option_ema21 = last.get("ema21") if last else None
                         option_ema34 = last.get("ema34") if last else None
-                        
-                        # Debug: log when broadcasting bank_nifty_ema
-                        print(f"Broadcasting bank_nifty_ema for {symbol} (token {token}): price={price}, strike={atm_strike}")
                         
                         broadcast({
                             "symbol": symbol,

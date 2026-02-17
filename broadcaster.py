@@ -41,10 +41,6 @@ def broadcast(tick: dict, strategy: str = None):
                             if ws not in option_subscribers:
                                 option_subscribers[ws] = []
                             option_subscribers[ws].append(sub_symbol)
-    
-    # Debug logging for bank_nifty_ema
-    if strategy == "bank_nifty_ema":
-        logger.info(f"Broadcasting {strategy} for {symbol}: {len(websockets_to_send)} direct clients, {len(option_subscribers)} option subscribers, total clients: {len(CLIENT_SUBSCRIPTIONS)}")
 
     # Send to direct subscribers
     if websockets_to_send:
@@ -90,7 +86,4 @@ def broadcast(tick: dict, strategy: str = None):
             asyncio.run_coroutine_threadsafe(send_to_options(), MAIN_LOOP)
     
     if not websockets_to_send and not option_subscribers:
-        # Debug: log when no subscribers found
-        logger.debug(f"No subscribers for {symbol} with strategy {strategy}. Total clients: {len(CLIENT_SUBSCRIPTIONS)}")
-        if CLIENT_SUBSCRIPTIONS:
-            logger.debug(f"Current subscriptions: {[(list(ws.subscriptions.keys()) if hasattr(ws, 'subscriptions') else 'N/A') for ws in CLIENT_SUBSCRIPTIONS.keys()]}")
+        return

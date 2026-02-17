@@ -95,13 +95,13 @@ async def websocket_endpoint(websocket: WebSocket):
                     symbol = sub.get("symbol")
                     strategy = sub.get("strategy", "ema_crossover")
                     if symbol:
-                        # Validate: bank_nifty_ema strategy only works for BANKNIFTY
-                        if strategy == "bank_nifty_ema" and symbol != "BANKNIFTY":
-                            await websocket.send_json({
-                                "status": "error",
-                                "message": f"Strategy 'bank_nifty_ema' is only available for BANKNIFTY symbol, not {symbol}"
-                            })
-                            continue
+                    # Validate: bank_nifty_ema strategy only works for BANKNIFTY and its options
+                    if strategy == "bank_nifty_ema" and not symbol.startswith("BANKNIFTY"):
+                        await websocket.send_json({
+                            "status": "error",
+                            "message": f"Strategy 'bank_nifty_ema' is only available for BANKNIFTY and its options, not {symbol}"
+                        })
+                        continue
                         
                         # Store strategies as a set to support multiple strategies per symbol
                         if symbol not in subs:

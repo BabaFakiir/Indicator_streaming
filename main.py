@@ -233,18 +233,28 @@ def run_websocket():
                         "trend": trend
                     }, strategy="stock-15min")
                     
-                    # Broadcast for bank_nifty_ema strategy (BANKNIFTY only)
-                    if symbol == "BANKNIFTY":
-                        atm_strike = BANKNIFTY_ATM_STRIKE.get(token)
-                        first_candle = BANKNIFTY_FIRST_CANDLE.get(token, {})
+                    # Broadcast for bank_nifty_ema strategy (BANKNIFTY and its options)
+                    if symbol.startswith("BANKNIFTY"):
+                        # For options, get strike and first candle from underlying BANKNIFTY token
+                        # The underlying BANKNIFTY token is "99926009"
+                        underlying_token = "99926009" if symbol != "BANKNIFTY" else token
+                        
+                        atm_strike = BANKNIFTY_ATM_STRIKE.get(underlying_token)
+                        first_candle = BANKNIFTY_FIRST_CANDLE.get(underlying_token, {})
+                        
+                        # For options, get EMA from the option's own indicators
+                        # For underlying BANKNIFTY, use its own indicators
+                        option_ema21 = last.get("ema21") if last else None
+                        option_ema34 = last.get("ema34") if last else None
+                        
                         broadcast({
                             "symbol": symbol,
                             "token": token,
                             "timestamp": ts.isoformat(),
                             "price": price,
                             "ltp": price,
-                            "ema21": last.get("ema21") if last else None,
-                            "ema34": last.get("ema34") if last else None,
+                            "ema21": option_ema21,
+                            "ema34": option_ema34,
                             "strike": atm_strike,
                             "high": first_candle.get("high"),
                             "low": first_candle.get("low")

@@ -57,6 +57,8 @@ def broadcast(tick: dict, strategy: str = None):
     # Send to option subscribers with modified symbol/token
     if option_subscribers:
         from config import SYMBOLS
+        # Import FIRST_CANDLE_OF_DAY from main to get option's own first candle data
+        import main
         
         async def send_to_options():
             for ws, option_symbols in option_subscribers.items():
@@ -75,6 +77,11 @@ def broadcast(tick: dict, strategy: str = None):
                                 break
                         if option_token:
                             option_tick["token"] = option_token
+                            
+                            # Update high/low to use the option's own first candle data
+                            option_first_candle = main.FIRST_CANDLE_OF_DAY.get(option_token, {})
+                            option_tick["high"] = option_first_candle.get("high")
+                            option_tick["low"] = option_first_candle.get("low")
                         
                         # Note: EMA values are from underlying BANKNIFTY since option isn't trading
                         # This is correct behavior - options derive value from underlying

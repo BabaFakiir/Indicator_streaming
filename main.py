@@ -22,8 +22,9 @@ LAST_INDICATORS = {}
 # token -> last trend (BULLISH, BEARISH, SIDEWAYS, or None)
 LAST_TRENDS = {}
 # For BANKNIFTY: track first candle of day and ATM strike
-BANKNIFTY_FIRST_CANDLE = {}  # token -> {"date": date, "open": price, "high": price, "low": price}
-BANKNIFTY_ATM_STRIKE = {}  # token -> strike value
+# Track first candle for all BANKNIFTY symbols (underlying and options)
+FIRST_CANDLE_OF_DAY = {}  # token -> {"date": date, "open": price, "high": price, "low": price}
+BANKNIFTY_ATM_STRIKE = {}  # token -> strike value (only for underlying BANKNIFTY)
 
 
 # =========================
@@ -100,12 +101,12 @@ def run_websocket():
                     # ---- Candle aggregation (may or may not close candle) ----
                     candles = aggregator.process_tick(token, price, ts)
 
-                    # ---- Track first candle of day for BANKNIFTY (for ATM strike calculation) ----
-                    if symbol == "BANKNIFTY":
+                    # ---- Track first candle of day for all BANKNIFTY symbols (underlying and options) ----
+                    if symbol.startswith("BANKNIFTY"):
                         current_date = ts.date()
-                        stored_date = BANKNIFTY_FIRST_CANDLE.get(token, {}).get("date")
+                        stored_date = FIRST_CANDLE_OF_DAY.get(token, {}).get("date")
                         
-                        # Reset strike if it's a new day (explicit date comparison)
+                        # Reset if it's a new day (explicit date comparison)
                         needs_reset = False
                         if stored_date is None:
                             needs_reset = True
@@ -116,9 +117,12 @@ def run_websocket():
                             needs_reset = True
                         
                         if needs_reset:
-                            # Clear old strike for new day
-                            BANKNIFTY_ATM_STRIKE[token] = None
-                            BANKNIFTY_FIRST_CANDLE[token] = {}
+                            # Clear old first candle data for new day
+                            FIRST_CANDLE_OF_DAY[token] = {}
+                            
+                            # For underlying BANKNIFTY only, also clear ATM strike
+                            if symbol == "BANKNIFTY":
+                                BANKNIFTY_ATM_STRIKE[token] = None
                             
                             # Try to get the first candle of TODAY
                             first_candle_open = None
@@ -143,24 +147,26 @@ def run_websocket():
                                     if current_candle and current_candle.get("time").date() == current_date:
                                         first_candle_data = current_candle
                             
-                            # Store first candle data and calculate strike
+                            # Store first candle data
                             if first_candle_data is not None:
                                 first_candle_open = first_candle_data.get("open", price)
                                 first_candle_high = first_candle_data.get("high", price)
                                 first_candle_low = first_candle_data.get("low", price)
                                 
-                                BANKNIFTY_FIRST_CANDLE[token] = {
+                                FIRST_CANDLE_OF_DAY[token] = {
                                     "date": current_date,
                                     "open": first_candle_open,
                                     "high": first_candle_high,
                                     "low": first_candle_low
                                 }
                                 
-                                # Calculate ATM strike: convert to decimal, round to nearest 100
-                                # Example: 5994780 / 100 = 59947.8, round(59947.8/100)*100 = round(599.478)*100 = 599*100 = 59900
-                                price_decimal = first_candle_open / 100
-                                atm_strike = round(price_decimal / 100) * 100
-                                BANKNIFTY_ATM_STRIKE[token] = atm_strike
+                                # Calculate ATM strike only for underlying BANKNIFTY
+                                if symbol == "BANKNIFTY":
+                                    # Calculate ATM strike: convert to decimal, round to nearest 100
+                                    # Example: 5994780 / 100 = 59947.8, round(59947.8/100)*100 = round(599.478)*100 = 599*100 = 59900
+                                    price_decimal = first_candle_open / 100
+                                    atm_strike = round(price_decimal / 100) * 100
+                                    BANKNIFTY_ATM_STRIKE[token] = atm_strike
                         else:
                             # Update high/low if we're still in the first candle of the day
                             # Check if we're currently in the first candle period
@@ -170,9 +176,9 @@ def run_websocket():
                                     candle_time = current_candle.get("time")
                                     if candle_time and candle_time.date() == current_date and candle_time.hour == 9 and candle_time.minute == 15:
                                         # Update high and low as the candle is being built
-                                        if token in BANKNIFTY_FIRST_CANDLE:
-                                            BANKNIFTY_FIRST_CANDLE[token]["high"] = current_candle.get("high", price)
-                                            BANKNIFTY_FIRST_CANDLE[token]["low"] = current_candle.get("low", price)
+                                        if token in FIRST_CANDLE_OF_DAY:
+                                            FIRST_CANDLE_OF_DAY[token]["high"] = current_candle.get("high", price)
+                                            FIRST_CANDLE_OF_DAY[token]["low"] = current_candle.get("low", price)
                             # Also update when first candle closes
                             elif candles is not None and len(candles) > 0:
                                 # Check if the first candle of today just closed
@@ -180,9 +186,9 @@ def run_websocket():
                                     candle_date = candle["time"].date()
                                     if candle_date == current_date and candle["time"].hour == 9 and candle["time"].minute == 15:
                                         # First candle closed, update with final high/low
-                                        if token in BANKNIFTY_FIRST_CANDLE:
-                                            BANKNIFTY_FIRST_CANDLE[token]["high"] = candle.get("high")
-                                            BANKNIFTY_FIRST_CANDLE[token]["low"] = candle.get("low")
+                                        if token in FIRST_CANDLE_OF_DAY:
+                                            FIRST_CANDLE_OF_DAY[token]["high"] = candle.get("high")
+                                            FIRST_CANDLE_OF_DAY[token]["low"] = candle.get("low")
                                         break
 
                     # ---- Indicator update ONLY on candle close ----
@@ -235,12 +241,15 @@ def run_websocket():
                     
                     # Broadcast for bank_nifty_ema strategy (BANKNIFTY and its options)
                     if symbol.startswith("BANKNIFTY"):
-                        # For options, get strike and first candle from underlying BANKNIFTY token
+                        # For options, get strike from underlying BANKNIFTY token
                         # The underlying BANKNIFTY token is "99926009"
                         underlying_token = "99926009" if symbol != "BANKNIFTY" else token
                         
+                        # Strike is always from underlying BANKNIFTY
                         atm_strike = BANKNIFTY_ATM_STRIKE.get(underlying_token)
-                        first_candle = BANKNIFTY_FIRST_CANDLE.get(underlying_token, {})
+                        
+                        # First candle high/low is from the symbol's own first candle (underlying or option)
+                        first_candle = FIRST_CANDLE_OF_DAY.get(token, {})
                         
                         # For options, get EMA from the option's own indicators
                         # For underlying BANKNIFTY, use its own indicators

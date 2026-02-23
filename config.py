@@ -77,7 +77,7 @@ SYMBOLS = {
     "60274": "BANKNIFTY24FEB2661500PE"
 }
 
-# NFO (exchangeType 5) tokens - BANKNIFTY options; rest use NSE (exchangeType 1)
+# NSE_FO (exchangeType 2) tokens - BANKNIFTY options; rest use NSE_CM (exchangeType 1)
 NFO_TOKENS = {k for k, v in SYMBOLS.items() if v.startswith("BANKNIFTY") and v != "BANKNIFTY"}
 NSE_TOKENS = [k for k in SYMBOLS if k not in NFO_TOKENS]
 

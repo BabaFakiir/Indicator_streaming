@@ -60,10 +60,10 @@ def run_websocket():
 
             def on_open(_):
                 print("WebSocket connected")
-                # NSE (1): stocks + indices; NFO (5): BANKNIFTY options
+                # NSE_CM (1): stocks + indices; NSE_FO (2): BANKNIFTY options (F&O)
                 token_list = [{"exchangeType": 1, "tokens": NSE_TOKENS}]
                 if NFO_TOKENS:
-                    token_list.append({"exchangeType": 5, "tokens": list(NFO_TOKENS)})
+                    token_list.append({"exchangeType": 2, "tokens": list(NFO_TOKENS)})
                 ws.subscribe(correlation_id="ema", mode=1, token_list=token_list)
 
             def on_message(msg):

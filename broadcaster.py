@@ -78,6 +78,12 @@ def broadcast(tick: dict, strategy: str = None):
                         if option_token:
                             option_tick["token"] = option_token
                             
+                            # Use the option's own last traded price (not the underlying's)
+                            option_ltp = main.LAST_PRICE.get(option_token)
+                            if option_ltp is not None:
+                                option_tick["price"] = option_ltp
+                                option_tick["ltp"] = option_ltp
+                            
                             # Update high/low to use the option's own first candle data
                             option_first_candle = main.FIRST_CANDLE_OF_DAY.get(option_token, {})
                             option_tick["high"] = option_first_candle.get("high")

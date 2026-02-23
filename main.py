@@ -21,6 +21,8 @@ aggregator = CandleAggregator()
 LAST_INDICATORS = {}
 # token -> last trend (BULLISH, BEARISH, SIDEWAYS, or None)
 LAST_TRENDS = {}
+# token -> last traded price (for options LTP when forwarding from underlying ticks)
+LAST_PRICE = {}
 # For BANKNIFTY: track first candle of day and ATM strike
 # Track first candle for all BANKNIFTY symbols (underlying and options)
 FIRST_CANDLE_OF_DAY = {}  # token -> {"date": date, "open": price, "high": price, "low": price}
@@ -97,6 +99,9 @@ def run_websocket():
                         return
 
                     symbol = SYMBOLS[token]
+
+                    # ---- Track last price per token (needed for option LTP when forwarding from underlying) ----
+                    LAST_PRICE[token] = price
 
                     # ---- Candle aggregation (may or may not close candle) ----
                     candles = aggregator.process_tick(token, price, ts)

@@ -6,7 +6,7 @@ from SmartApi.smartWebSocketV2 import SmartWebSocketV2
 from broadcaster import broadcast
 
 
-from config import *
+from config import *  # SYMBOLS, NSE_TOKENS, NFO_TOKENS, etc.
 from candle_aggregator import CandleAggregator
 from ema_calculator import calculate_indicators
 from tell_trend import tell_trend
@@ -60,14 +60,11 @@ def run_websocket():
 
             def on_open(_):
                 print("WebSocket connected")
-                ws.subscribe(
-                    correlation_id="ema",
-                    mode=1,
-                    token_list=[{
-                        "exchangeType": 1,
-                        "tokens": list(SYMBOLS.keys())
-                    }]
-                )
+                # NSE (1): stocks + indices; NFO (5): BANKNIFTY options
+                token_list = [{"exchangeType": 1, "tokens": NSE_TOKENS}]
+                if NFO_TOKENS:
+                    token_list.append({"exchangeType": 5, "tokens": list(NFO_TOKENS)})
+                ws.subscribe(correlation_id="ema", mode=1, token_list=token_list)
 
             def on_message(msg):
                 try:

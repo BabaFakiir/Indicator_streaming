@@ -83,13 +83,16 @@ def broadcast(tick: dict, strategy: str = None):
                             option_tick["price"] = option_ltp
                             option_tick["ltp"] = option_ltp
                             
+                            # Use option's own EMAs (not underlying's index-scaled EMAs)
+                            option_last = main.LAST_INDICATORS.get(option_token)
+                            option_tick["ema21"] = option_last.get("ema21") if option_last else None
+                            option_tick["ema34"] = option_last.get("ema34") if option_last else None
+                            
                             # Update high/low to use the option's own first candle data
                             option_first_candle = main.FIRST_CANDLE_OF_DAY.get(option_token, {})
                             option_tick["high"] = option_first_candle.get("high")
                             option_tick["low"] = option_first_candle.get("low")
                         
-                        # Note: EMA values are from underlying BANKNIFTY since option isn't trading
-                        # This is correct behavior - options derive value from underlying
                         await ws.send_text(json.dumps(option_tick))
                     except Exception:
                         pass

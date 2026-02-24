@@ -1,0 +1,24 @@
+[BANK_NIFTY_EMA] BANKNIFTY24FEB2661200CE: Price=6120095.0, LTP=6120095.0, EMA21=6123866.23, EMA34=6124606.38, Strike=61200, High=None, Low=None
+[BANK_NIFTY_EMA] BANKNIFTY24FEB2661200CE: Price=6120010.0, LTP=6120010.0, EMA21=6123866.23, EMA34=6124606.38, Strike=61200, High=None, Low=None
+[BANK_NIFTY_EMA] BANKNIFTY24FEB2661200CE: Price=6119940.0, LTP=6119940.0, EMA21=6123866.23, EMA34=6124606.38, Strike=61200, High=None, Low=None
+[BANK_NIFTY_EMA] BANKNIFTY24FEB2661200CE: Price=6120020.0, LTP=6120020.0, EMA21=6123866.23, EMA34=6124606.38, Strike=61200, High=None, Low=None
+[BANK_NIFTY_EMA] BANKNIFTY24FEB2661200CE: Price=6120095.0, LTP=6120095.0, EMA21=6123866.23, EMA34=6124606.38, Strike=61200, High=None, Low=None
+[BANK_NIFTY_EMA] BANKNIFTY24FEB2661200CE: Price=6120160.0, LTP=6120160.0, EMA21=6123866.23, EMA34=6124606.38, Strike=61200, High=None, Low=None
+[BANK_NIFTY_EMA] BANKNIFTY24FEB2661200CE: Price=6120145.0, LTP=6120145.0, EMA21=6123866.23, EMA34=6124606.38, Strike=61200, High=None, Low=None
+[BANK_NIFTY_EMA] BANKNIFTY24FEB2661200CE: Price=6120350.0, LTP=6120350.0, EMA21=6123866.23, EMA34=6124606.38, Strike=61200, High=None, Low=None
+[BANK_NIFTY_EMA] BANKNIFTY24FEB2661200CE: Price=6120095.0, LTP=6120095.0, EMA21=6123866.23, EMA34=6124606.38, Strike=61200, High=None, Low=None
+[BANK_NIFTY_EMA] BANKNIFTY24FEB2661200CE: Price=6120205.0, LTP=6120205.0, EMA21=6123866.23, EMA34=6124606.38, Strike=61200, High=None, Low=None
+[BANK_NIFTY_EMA] BANKNIFTY24FEB2661200CE: Price=6120175.0, LTP=6120175.0, EMA21=6123866.23, EMA34=6124606.38, Strike=61200, High=None, Low=None
+
+I believe I cornered the issue. The option symboltoken feeded in @config.py was wrong. Fetched this from angelone token guide:
+{"token":"60273","symbol":"BANKNIFTY24FEB2661200CE","name":"BANKNIFTY","expiry":"24FEB2026","strike":"6120000.000000","lotsize":"30","instrumenttype":"OPTIDX","exch_seg":"NFO","tick_size":"5.000000"},
+This shows token 60273 for BANKNIFTY24FEB2661200CE
+
+Now, listen to me carefully. I want a dynamic system for monitoring Banknifty option ticks.
+
+Since, we do not know what our strike value for the day will be, we take +-1000 buffer for the stream. For eg if we close the day at BANKNIFTY 61200.00, we monitor options 
+BANKNIFTY 60200 - 62200 PE and CE for the nearest expiry. Also note that Banknifty options have monthly expiry at last tuesday of every month. Just like this month is 24 Feb. 
+
+Now, at 9:00 am IST, we check the last LTP of Banknifty, decide what options to monitor for today based on +-1000 point buffer and then find their symbol tokens. 
+symbol tokens for Angelone are present in https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json . It is a list of instruments in form {"token":"60273","symbol":"BANKNIFTY24FEB2661200CE","name":"BANKNIFTY","expiry":"24FEB2026","strike":"6120000.000000","lotsize":"30","instrumenttype":"OPTIDX","exch_seg":"NFO","tick_size":"5.000000"}. Here match the symbol as option name : "BANKNIFTY24FEB2661200CE" and then taken its token value as 60273 as symboltoken for that instrument. 
+Then subscribe to those instruments and stream their ticks

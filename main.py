@@ -21,12 +21,31 @@ aggregator = CandleAggregator()
 LAST_INDICATORS = {}
 # token -> last trend (BULLISH, BEARISH, SIDEWAYS, or None)
 LAST_TRENDS = {}
+# token -> first 15-minute candle range for non-BANKNIFTY stocks (stock-15min strategy)
+# We only populate High/Low after the first 15 minutes are complete (9:15-9:30).
+FIRST_15_CANDLE_OF_DAY = {}  # token -> {"date": date, "high": price, "low": price}
+# token -> whether price has breached the first 15-minute range after 9:30
+STOCK_15_BREACHED = {}  # token -> bool
 # token -> last traded price (for options LTP when forwarding from underlying ticks)
 LAST_PRICE = {}
 # For BANKNIFTY: track first candle of day and ATM strike
 # Track first candle for all BANKNIFTY symbols (underlying and options)
 FIRST_CANDLE_OF_DAY = {}  # token -> {"date": date, "open": price, "high": price, "low": price}
 BANKNIFTY_ATM_STRIKE = {}  # token -> strike value (only for underlying BANKNIFTY)
+
+# =========================
+# STRATEGY-SPECIFIC TOKEN SETS
+# =========================
+# These come from config.SUBSCRIPTION_GUIDE: {strategy: {token: instrument_name}}
+STOCK15_TOKENS = set(SUBSCRIPTION_GUIDE.get("stock-15min", {}).keys())
+EMA_TOKENS = set(SUBSCRIPTION_GUIDE.get("ema_crossover", {}).keys())
+NIFTY30_TOKENS = set(SUBSCRIPTION_GUIDE.get("nifty_30min_breakout", {}).keys())
+BANKNIFTY_CROSSOVER_TOKENS = set(SUBSCRIPTION_GUIDE.get("bank_nifty_crossover", {}).keys())
+
+# token -> first 30-minute candle range for NIFTY breakout (nifty_30min_breakout)
+FIRST_30_CANDLE_OF_DAY = {}  # token -> {"date": date, "high": price, "low": price}
+# token -> whether price has breached the first 30-minute range after 9:45
+NIFTY_30_BREACHED = {}  # token -> bool
 
 
 # =========================
@@ -102,6 +121,128 @@ def run_websocket():
 
                     # ---- Candle aggregation (may or may not close candle) ----
                     candles = aggregator.process_tick(token, price, ts)
+
+                    # ---- Track first 15-minute candle breakout for stock-15min ----
+                    if token in STOCK15_TOKENS:
+                        current_date = ts.date()
+                        stored_date = FIRST_15_CANDLE_OF_DAY.get(token, {}).get("date")
+
+                        # Daily reset at first tick after day change.
+                        needs_reset = False
+                        if stored_date is None:
+                            needs_reset = True
+                        elif isinstance(stored_date, dt.date):
+                            needs_reset = stored_date != current_date
+                        else:
+                            needs_reset = True
+
+                        if needs_reset:
+                            FIRST_15_CANDLE_OF_DAY[token] = {}
+                            STOCK_15_BREACHED[token] = False
+
+                        # Compute the first 15-min high/low after the first 15 minutes complete.
+                        # First 15 minutes = 9:15-9:30, made from 5-min candles at 9:15, 9:20, 9:25.
+                        first15 = FIRST_15_CANDLE_OF_DAY.get(token, {})
+                        if (
+                            ts.hour == 9
+                            and ts.minute >= 30
+                            and (first15.get("high") is None or first15.get("low") is None)
+                            and candles is not None
+                            and len(candles) > 0
+                        ):
+                            required_minutes = {15, 20, 25}
+                            found = {}
+                            for c in candles:
+                                ct = c.get("time")
+                                if not ct:
+                                    continue
+                                if ct.date() != current_date or ct.hour != 9:
+                                    continue
+                                if ct.minute in required_minutes:
+                                    found[ct.minute] = c
+
+                            if len(found) == 3:
+                                highs = [v.get("high") for v in found.values() if v.get("high") is not None]
+                                lows = [v.get("low") for v in found.values() if v.get("low") is not None]
+                                if highs and lows:
+                                    FIRST_15_CANDLE_OF_DAY[token] = {
+                                        "date": current_date,
+                                        "high": max(highs),
+                                        "low": min(lows),
+                                    }
+
+                        # Breakout check after 9:30 once we know first 15m high/low.
+                        breached = STOCK_15_BREACHED.get(token, False)
+                        first15 = FIRST_15_CANDLE_OF_DAY.get(token, {})
+                        first15_high = first15.get("high")
+                        first15_low = first15.get("low")
+                        if (
+                            not breached
+                            and first15_high is not None
+                            and first15_low is not None
+                            and (ts.hour > 9 or (ts.hour == 9 and ts.minute >= 30))
+                        ):
+                            if price > first15_high or price < first15_low:
+                                STOCK_15_BREACHED[token] = True
+
+                    # ---- Track first 30-minute candle breakout for nifty_30min_breakout ----
+                    if token in NIFTY30_TOKENS:
+                        current_date = ts.date()
+                        stored_date = FIRST_30_CANDLE_OF_DAY.get(token, {}).get("date")
+
+                        needs_reset = False
+                        if stored_date is None:
+                            needs_reset = True
+                        elif isinstance(stored_date, dt.date):
+                            needs_reset = stored_date != current_date
+                        else:
+                            needs_reset = True
+
+                        if needs_reset:
+                            FIRST_30_CANDLE_OF_DAY[token] = {}
+                            NIFTY_30_BREACHED[token] = False
+
+                        first30 = FIRST_30_CANDLE_OF_DAY.get(token, {})
+                        if (
+                            ts.hour == 9
+                            and ts.minute >= 45
+                            and (first30.get("high") is None or first30.get("low") is None)
+                            and candles is not None
+                            and len(candles) > 0
+                        ):
+                            # First 30-min = 9:15-9:45 => 6 five-minute candles: 15,20,25,30,35,40
+                            required_minutes = {15, 20, 25, 30, 35, 40}
+                            found = {}
+                            for c in candles:
+                                ct = c.get("time")
+                                if not ct:
+                                    continue
+                                if ct.date() != current_date or ct.hour != 9:
+                                    continue
+                                if ct.minute in required_minutes:
+                                    found[ct.minute] = c
+
+                            if len(found) == 6:
+                                highs = [v.get("high") for v in found.values() if v.get("high") is not None]
+                                lows = [v.get("low") for v in found.values() if v.get("low") is not None]
+                                if highs and lows:
+                                    FIRST_30_CANDLE_OF_DAY[token] = {
+                                        "date": current_date,
+                                        "high": max(highs),
+                                        "low": min(lows),
+                                    }
+
+                        breached30 = NIFTY_30_BREACHED.get(token, False)
+                        first30_high = first30.get("high")
+                        first30_low = first30.get("low")
+                        if (
+                            not breached30
+                            and first30_high is not None
+                            and first30_low is not None
+                            and (ts.hour > 9 or (ts.hour == 9 and ts.minute >= 45))
+                        ):
+                            if price > first30_high or price < first30_low:
+                                NIFTY_30_BREACHED[token] = True
 
                     # ---- Track first candle of day for all BANKNIFTY symbols (underlying and options) ----
                     if symbol.startswith("BANKNIFTY"):
@@ -195,15 +336,15 @@ def run_websocket():
 
                     # ---- Indicator update ONLY on candle close ----
                     if candles is not None:
-                        # Calculate EMA indicators for ema_crossover strategy
-                        indicators = calculate_indicators(candles)
-                        if indicators:
-                            LAST_INDICATORS[token] = indicators
+                        # EMA indicators for ema_crossover + bank_nifty_crossover
+                        if token in EMA_TOKENS or token in BANKNIFTY_CROSSOVER_TOKENS:
+                            indicators = calculate_indicators(candles)
+                            if indicators:
+                                LAST_INDICATORS[token] = indicators
 
-                        # Calculate trend for stock-15min strategy (need at least 20 candles)
-                        if len(candles) >= 20:
+                        # Trend (Heikin-Ashi + structure) for stock-15min strategy
+                        if token in STOCK15_TOKENS and len(candles) >= 20:
                             try:
-                                # Convert candles to DataFrame for tell_trend
                                 df = pd.DataFrame(list(candles))
                                 trend = tell_trend(df)
                                 LAST_TRENDS[token] = trend
@@ -215,61 +356,82 @@ def run_websocket():
                     trend = LAST_TRENDS.get(token)
 
                     # ---- STREAM EVERY TICK ----
-                    # Broadcast for ema_crossover strategy
-                    indicator_time = None
-                    if last and last.get("time"):
-                        indicator_time = last.get("time").isoformat()
-                    
-                    broadcast({
-                        "symbol": symbol,
-                        "token": token,
-                        "timestamp": ts.isoformat(),
-                        "price": price,
-                        "ema9": last.get("ema9") if last else None,
-                        "ema21": last.get("ema21") if last else None,
-                        "ema34": last.get("ema34") if last else None,
-                        "rsi14": last.get("rsi14") if last else None,
-                        "indicator_time": indicator_time
-                    }, strategy="ema_crossover")
-                    
-                    # Broadcast for stock-15min strategy
-                    broadcast({
-                        "symbol": symbol,
-                        "token": token,
-                        "timestamp": ts.isoformat(),
-                        "price": price,
-                        "trend": trend
-                    }, strategy="stock-15min")
-                    
-                    # Broadcast for bank_nifty_ema strategy (BANKNIFTY and its options)
-                    if symbol.startswith("BANKNIFTY"):
-                        # For options, get strike from underlying BANKNIFTY token
-                        # The underlying BANKNIFTY token is "99926009"
+                    # ema_crossover
+                    if token in EMA_TOKENS:
+                        indicator_time = None
+                        if last and last.get("time"):
+                            indicator_time = last.get("time").isoformat()
+
+                        broadcast({
+                            "symbol": symbol,
+                            "token": token,
+                            "timestamp": ts.isoformat(),
+                            "price": price,
+                            "ema9": last.get("ema9") if last else None,
+                            "ema21": last.get("ema21") if last else None,
+                            "ema34": last.get("ema34") if last else None,
+                            "rsi14": last.get("rsi14") if last else None,
+                            "indicator_time": indicator_time,
+                        }, strategy="ema_crossover")
+
+                    # stock-15min
+                    if token in STOCK15_TOKENS:
+                        first15_data = FIRST_15_CANDLE_OF_DAY.get(token, {})
+                        first15_high = first15_data.get("high")
+                        first15_low = first15_data.get("low")
+                        breached = STOCK_15_BREACHED.get(token, False)
+                        # Before the first 15m candle is formed, always project breached as False.
+                        if first15_high is None or first15_low is None:
+                            breached = False
+
+                        broadcast({
+                            "symbol": symbol,
+                            "token": token,
+                            "timestamp": ts.isoformat(),
+                            "price": price,
+                            "trend": trend,
+                            "high": first15_high,
+                            "low": first15_low,
+                            "breached": breached,
+                        }, strategy="stock-15min")
+
+                    # nifty_30min_breakout (NIFTY50)
+                    if token in NIFTY30_TOKENS:
+                        first30_data = FIRST_30_CANDLE_OF_DAY.get(token, {})
+                        first30_high = first30_data.get("high")
+                        first30_low = first30_data.get("low")
+                        breached30 = NIFTY_30_BREACHED.get(token, False)
+                        if first30_high is None or first30_low is None:
+                            breached30 = False
+
+                        broadcast({
+                            "symbol": symbol,
+                            "token": token,
+                            "timestamp": ts.isoformat(),
+                            "price": price,
+                            "high": first30_high,
+                            "low": first30_low,
+                            "breached": breached30,
+                        }, strategy="nifty_30min_breakout")
+
+                    # bank_nifty_crossover (BANKNIFTY + options)
+                    if token in BANKNIFTY_CROSSOVER_TOKENS:
                         underlying_token = "99926009" if symbol != "BANKNIFTY" else token
-                        
-                        # Strike is always from underlying BANKNIFTY
                         atm_strike = BANKNIFTY_ATM_STRIKE.get(underlying_token)
-                        
-                        # First candle high/low is from the symbol's own first candle (underlying or option)
                         first_candle = FIRST_CANDLE_OF_DAY.get(token, {})
-                        
-                        # For options, get EMA from the option's own indicators
-                        # For underlying BANKNIFTY, use its own indicators
-                        option_ema21 = last.get("ema21") if last else None
-                        option_ema34 = last.get("ema34") if last else None
-                        
+
                         broadcast({
                             "symbol": symbol,
                             "token": token,
                             "timestamp": ts.isoformat(),
                             "price": price,
                             "ltp": price,
-                            "ema21": option_ema21,
-                            "ema34": option_ema34,
+                            "ema21": last.get("ema21") if last else None,
+                            "ema34": last.get("ema34") if last else None,
                             "strike": atm_strike,
                             "high": first_candle.get("high"),
-                            "low": first_candle.get("low")
-                        }, strategy="bank_nifty_ema")
+                            "low": first_candle.get("low"),
+                        }, strategy="bank_nifty_crossover")
 
 
                 except Exception as e:

@@ -117,7 +117,10 @@ After sending a subscription message, you'll receive a confirmation:
   "token": "4963",
   "timestamp": "2026-01-02T10:30:45.123456+05:30",
   "price": 987.50,
-  "trend": "BULLISH"
+  "trend": "BULLISH",
+  "high": 1000.0,
+  "low": 950.0,
+  "breached": false
 }
 ```
 
@@ -131,8 +134,36 @@ After sending a subscription message, you'll receive a confirmation:
   - `"BEARISH"`: Downtrend detected
   - `"SIDEWAYS"`: Sideways/consolidation
   - `null`: Not enough data (need at least 20 five-minute candles)
+- `high`: High of the first 15-minute candle (9:15–9:30), else `null` initially
+- `low`: Low of the first 15-minute candle (9:15–9:30), else `null` initially
+- `breached`: After 9:30, becomes `true` if price crosses above `high` or below `low`, else `false`
 
 **Note:** Trend is calculated when a 5-minute candle closes and at least 20 candles are available. Until then, `trend` will be `null`.
+
+---
+### Strategy: `nifty_30min_breakout`
+
+**Response Format:**
+```json
+{
+  "symbol": "NIFTY50",
+  "token": "99926000",
+  "timestamp": "2026-01-02T10:30:45.123456+05:30",
+  "price": 22000.0,
+  "high": 22300.0,
+  "low": 21750.0,
+  "breached": false
+}
+```
+
+**Fields:**
+- `symbol`: Index symbol (currently `"NIFTY50"`)
+- `token`: Token ID for the index
+- `timestamp`: Current tick timestamp (ISO format)
+- `price`: Last traded price
+- `high`: High of the first 30-minute candle (9:15–9:45), else `null` initially
+- `low`: Low of the first 30-minute candle (9:15–9:45), else `null` initially
+- `breached`: After 9:45, becomes `true` if price crosses above `high` or below `low`, else `false`
 
 ---
 

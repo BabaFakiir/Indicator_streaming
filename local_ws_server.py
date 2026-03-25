@@ -3,6 +3,8 @@ import json
 import threading
 import websockets
 
+from config import SUBSCRIPTION_GUIDE
+
 # websocket -> dict mapping symbol to strategy
 # Example: {"TCS": "ema_crossover", "ICICI": "stock-15min"}
 CLIENT_SUBSCRIPTIONS = {}
@@ -23,25 +25,39 @@ async def handler(websocket):
             # subscription message
             if data.get("action") == "subscribe":
                 subscriptions = {}
+
+                available_modes = set(SUBSCRIPTION_GUIDE.keys())
+                strategy_aliases = {
+                    "nifty-30min-breakout": "nifty_30min_breakout",
+                    "bank_nifty_ema": "bank_nifty_crossover",
+                }
                 
                 # Support new format: {"action": "subscribe", "subscriptions": [{"symbol": "TCS", "strategy": "ema_crossover"}]}
                 if "subscriptions" in data:
                     for sub in data["subscriptions"]:
                         symbol = sub.get("symbol")
-                        strategy = sub.get("strategy", "ema_crossover")  # default to ema_crossover
+                        strategy = sub.get("strategy")
                         if symbol:
+                            if not strategy:
+                                continue
+                            strategy = strategy_aliases.get(strategy, strategy)
+                            if strategy not in available_modes:
+                                continue
+                            allowed_symbols = set(SUBSCRIPTION_GUIDE[strategy].values())
+                            if symbol not in allowed_symbols:
+                                continue
                             subscriptions[symbol] = strategy
-                
-                # Support legacy format: {"action": "subscribe", "symbols": ["TCS", "ICICI"]} (defaults to ema_crossover)
-                elif "symbols" in data:
-                    for symbol in data["symbols"]:
-                        subscriptions[symbol] = "ema_crossover"
                 
                 # Support single subscription: {"action": "subscribe", "symbol": "TCS", "strategy": "stock-15min"}
                 elif "symbol" in data:
                     symbol = data["symbol"]
-                    strategy = data.get("strategy", "ema_crossover")
-                    subscriptions[symbol] = strategy
+                    strategy = data.get("strategy")
+                    if symbol and strategy:
+                        strategy = strategy_aliases.get(strategy, strategy)
+                        if strategy in available_modes:
+                            allowed_symbols = set(SUBSCRIPTION_GUIDE[strategy].values())
+                            if symbol in allowed_symbols:
+                                subscriptions[symbol] = strategy
                 
                 CLIENT_SUBSCRIPTIONS[websocket] = subscriptions
                 print(f"Client subscribed: {subscriptions}")

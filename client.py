@@ -14,7 +14,7 @@ async def main():
         subscription = {
             "action": "subscribe",
             "subscriptions": [
-                {"symbol": "BANKNIFTY30MAR2659500CE", "strategy": "bank_nifty_ema"}
+                {"symbol": "RELIANCE", "strategy": "stock-15min"}
             ]
         }
         
@@ -46,8 +46,19 @@ async def main():
                               f"RSI={data['rsi14']}")
                     elif "trend" in data:
                         # stock-15min strategy message
-                        print(f"[TREND] {data['symbol']}: Price={data['price']}, "
-                              f"Trend={data['trend']}")
+                        print(
+                            f"[TREND] {data['symbol']}: Price={data['price']}, "
+                            f"Trend={data['trend']}, "
+                            f"High={data.get('high')}, Low={data.get('low')}, "
+                            f"Breached={data.get('breached')}"
+                        )
+                    elif data.get("breached") is not None and "high" in data and "low" in data:
+                        # nifty-30min-breakout strategy message
+                        print(
+                            f"[NIFTY_BREAKOUT] {data['symbol']}: Price={data['price']}, "
+                            f"High={data.get('high')}, Low={data.get('low')}, "
+                            f"Breached={data.get('breached')}"
+                        )
                     elif "strike" in data:
                         # bank_nifty_ema strategy message
                         print(f"[BANK_NIFTY_EMA] {data['symbol']}: Price={data['price']}, "

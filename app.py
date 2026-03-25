@@ -91,22 +91,57 @@ async def websocket_endpoint(websocket: WebSocket):
 
             if data.get("action") == "subscribe":
                 subs = {}
+
+                # Import only when needed to avoid circular imports at startup.
+                from config import SUBSCRIPTION_GUIDE
+
+                available_modes = set(SUBSCRIPTION_GUIDE.keys())
+
+                # Support aliases from the client side.
+                # Canonicalization ensures broadcaster/main can compare strategy strings consistently.
+                strategy_aliases = {
+                    "nifty-30min-breakout": "nifty_30min_breakout",
+                    "bank_nifty_ema": "bank_nifty_crossover",  # backward-compat alias
+                }
+
                 for sub in data.get("subscriptions", []):
                     symbol = sub.get("symbol")
-                    strategy = sub.get("strategy", "ema_crossover")
-                    if symbol:
-                        # Validate: bank_nifty_ema strategy only works for BANKNIFTY and its options
-                        if strategy == "bank_nifty_ema" and not symbol.startswith("BANKNIFTY"):
-                            await websocket.send_json({
-                                "status": "error",
-                                "message": f"Strategy 'bank_nifty_ema' is only available for BANKNIFTY and its options, not {symbol}"
-                            })
-                            continue
-                        
-                        # Store strategies as a set to support multiple strategies per symbol
-                        if symbol not in subs:
-                            subs[symbol] = set()
-                        subs[symbol].add(strategy)
+                    strategy = sub.get("strategy")
+
+                    if not symbol:
+                        continue
+
+                    # Deny if strategy is missing or unknown.
+                    if not strategy:
+                        await websocket.send_json({
+                            "status": "error",
+                            "message": f"Missing required field 'strategy' for symbol {symbol}"
+                        })
+                        continue
+
+                    strategy = strategy_aliases.get(strategy, strategy)
+
+                    if strategy not in available_modes:
+                        await websocket.send_json({
+                            "status": "error",
+                            "message": f"Unknown strategy '{strategy}'. Available: {sorted(available_modes)}"
+                        })
+                        continue
+
+                    # Token/symbol allow-list per mode (derived from SUBSCRIPTION_GUIDE)
+                    allowed_symbols = set(SUBSCRIPTION_GUIDE[strategy].values())
+                    if symbol not in allowed_symbols:
+                        await websocket.send_json({
+                            "status": "error",
+                            "message": f"Strategy '{strategy}' is not available for symbol '{symbol}'"
+                        })
+                        continue
+
+                    # Store strategies as a set to support multiple strategies per symbol
+                    if symbol not in subs:
+                        subs[symbol] = set()
+                    subs[symbol].add(strategy)
+
                 # Convert sets to lists for JSON serialization in response
                 subs_for_response = {k: list(v) for k, v in subs.items()}
                 CLIENT_SUBSCRIPTIONS[websocket] = subs

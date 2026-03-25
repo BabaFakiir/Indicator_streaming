@@ -20,7 +20,6 @@ async def handler(websocket):
     try:
         async for message in websocket:
             data = json.loads(message)
-            print(f"Received message: {data}")
 
             # subscription message
             if data.get("action") == "subscribe":

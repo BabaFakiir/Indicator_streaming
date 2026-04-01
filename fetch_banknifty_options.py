@@ -24,9 +24,9 @@ def fetch_instruments() -> list:
 
 def filter_banknifty_options(
     instruments: list,
-    expiry: str,  # e.g. "30MAR2026"
-    strike_min: int = 52500,
-    strike_max: int = 55000,
+    expiry: str,  # e.g. "28APR2026"
+    strike_min: int = 50000,
+    strike_max: int = 52500,
     step: int = 100,
 ) -> List[Tuple[str, str]]:
     """
@@ -68,9 +68,9 @@ def filter_banknifty_options(
 
 def main():
     parser = argparse.ArgumentParser(description="Fetch BANKNIFTY option tokens from Angel One")
-    parser.add_argument("--expiry", default="30MAR2026", help="Expiry e.g. 30MAR2026")
-    parser.add_argument("--min", type=int, default=52500, help="Min strike")
-    parser.add_argument("--max", type=int, default=55000, help="Max strike")
+    parser.add_argument("--expiry", default="28APR2026", help="Expiry e.g. 30MAR2026")
+    parser.add_argument("--min", type=int, default=47000, help="Min strike")
+    parser.add_argument("--max", type=int, default=56000, help="Max strike")
     parser.add_argument("--step", type=int, default=100, help="Strike step")
     args = parser.parse_args()
 

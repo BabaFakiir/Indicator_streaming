@@ -14,7 +14,10 @@ async def main():
         subscription = {
             "action": "subscribe",
             "subscriptions": [
-                {"symbol": "NIFTY50", "strategy": "nifty_30min_breakout"}
+                {"symbol": "NIFTY50", "strategy": "nifty_30min_breakout"},
+                {"symbol": "BANKNIFTY", "strategy": "bank_nifty_crossover"},
+                {"symbol": "TCS", "strategy": "ema_crossover"},
+                {"symbol": "RELIANCE", "strategy": "stock-15min"}
             ]
         }
         

@@ -1,4 +1,4 @@
-import time
+import time as pytime
 import datetime as dt
 import pyotp
 from SmartApi import SmartConnect
@@ -60,7 +60,15 @@ def login():
     smart = SmartConnect(api_key=API_KEY)
     totp = pyotp.TOTP(TOTP_SECRET).now()
     session = smart.generateSession(CLIENT_ID, MPIN, totp)
-    return session["data"]["jwtToken"], session["data"]["feedToken"]
+    if not session or not isinstance(session, dict):
+        raise RuntimeError("SmartAPI login failed: empty response")
+    data = session.get("data") or {}
+    jwt_token = data.get("jwtToken")
+    feed_token = data.get("feedToken")
+    if not jwt_token or not feed_token:
+        msg = session.get("message") or "jwtToken/feedToken missing"
+        raise RuntimeError(f"SmartAPI login failed: {msg}")
+    return jwt_token, feed_token
 
 # =========================
 # WEBSOCKET RUNNER
@@ -454,7 +462,7 @@ def run_websocket():
 
         except Exception as e:
             print("WebSocket crashed. Reconnecting in", RECONNECT_DELAY, "seconds:", e)
-            time.sleep(RECONNECT_DELAY)
+            pytime.sleep(RECONNECT_DELAY)
 
 # =========================
 # MAIN ENTRY POINT

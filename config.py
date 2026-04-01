@@ -1,7 +1,7 @@
 import pytz
 from datetime import time
 
-API_KEY = "f7JZpXaY"
+API_KEY = "ZET44F0c"
 CLIENT_ID = "S59212605"
 MPIN = "9999"
 TOTP_SECRET = "UYAYICJJCIYDNW2QT2CREHPLBQ"

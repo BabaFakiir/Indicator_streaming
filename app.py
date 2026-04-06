@@ -102,8 +102,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 strategy_aliases = {
                     "nifty-30min-breakout": "nifty_30min_breakout",
                     "bank_nifty_ema": "bank_nifty_crossover",  # backward-compat alias
+                    "stock-fut-breakout": "stock_fut_breakout",
                 }
-
                 for sub in data.get("subscriptions", []):
                     symbol = sub.get("symbol")
                     strategy = sub.get("strategy")

@@ -6,11 +6,13 @@ from SmartApi.smartWebSocketV2 import SmartWebSocketV2
 from broadcaster import broadcast
 
 
-from config import *  # SYMBOLS, NSE_TOKENS, NFO_TOKENS, etc.
+from config import *  # SYMBOLS, NSE_TOKENS, NFO_TOKENS, STOCK_FUT_GAPDOWN_PCT, etc.
 from candle_aggregator import CandleAggregator
 from ema_calculator import calculate_indicators
 from tell_trend import tell_trend
 import pandas as pd
+
+import stock_fut_breakout_cache as stock_fut_cache
 
 # =========================
 # GLOBAL STATE
@@ -41,6 +43,63 @@ STOCK15_TOKENS = set(SUBSCRIPTION_GUIDE.get("stock-15min", {}).keys())
 EMA_TOKENS = set(SUBSCRIPTION_GUIDE.get("ema_crossover", {}).keys())
 NIFTY30_TOKENS = set(SUBSCRIPTION_GUIDE.get("nifty_30min_breakout", {}).keys())
 BANKNIFTY_CROSSOVER_TOKENS = set(SUBSCRIPTION_GUIDE.get("bank_nifty_crossover", {}).keys())
+STOCK_FUT_BREAKOUT_TOKENS = set(SUBSCRIPTION_GUIDE.get("stock_fut_breakout", {}).keys())
+
+# stock_fut_breakout: tick-derived prior session close (committed when calendar day changes)
+# token -> {"price": float, "timestamp": datetime, "session_date": date}
+STOCK_FUT_LAST_SESSION_CLOSE = {}
+# Rolling last tick for the active session day (used to commit session close on next day)
+# token -> {"price": float, "timestamp": datetime}
+STOCK_FUT_INTRADAY_LAST_TICK = {}
+# token -> date (calendar day of last STOCK_FUT_INTRADAY_LAST_TICK update)
+STOCK_FUT_TICK_DAY = {}
+# First tick of the current session day (for gap vs prior session — timestamps must differ by date)
+# token -> {"price": float, "timestamp": datetime}
+STOCK_FUT_FIRST_TICK_OF_DAY = {}
+# token -> None | bool — None until gap is computable (prior session + opening tick on a new date)
+STOCK_FUT_IS_GAPDOWN = {}
+# token -> {"date", "high", "low"} first 75 minutes (gapdown names only)
+STOCK_FUT_75M_RANGE = {}
+# token -> bool
+STOCK_FUT_BROKEN_OUT = {}
+
+# First 75 minutes = fifteen 5m candles starting 9:15
+_STOCK_FUT_75M_MIN_9 = frozenset({15, 20, 25, 30, 35, 40, 45, 50, 55})
+_STOCK_FUT_75M_MIN_10 = frozenset({0, 5, 10, 15, 20, 25})
+
+
+_STOCK_FUT_LAST_DISK_SAVE = 0.0
+
+
+def _stock_fut_persist(force: bool = False):
+    """Persist tick state; throttle disk writes unless force (e.g. session commit)."""
+    global _STOCK_FUT_LAST_DISK_SAVE
+    now = pytime.time()
+    if not force and (now - _STOCK_FUT_LAST_DISK_SAVE) < 2.0:
+        return
+    _STOCK_FUT_LAST_DISK_SAVE = now
+    stock_fut_cache.save_state(
+        {
+            "last_session_close": STOCK_FUT_LAST_SESSION_CLOSE,
+            "intraday_last_tick": STOCK_FUT_INTRADAY_LAST_TICK,
+            "tick_day": STOCK_FUT_TICK_DAY,
+            "first_tick_of_day": STOCK_FUT_FIRST_TICK_OF_DAY,
+        }
+    )
+
+
+def _stock_fut_load():
+    global STOCK_FUT_LAST_SESSION_CLOSE, STOCK_FUT_INTRADAY_LAST_TICK, STOCK_FUT_TICK_DAY, STOCK_FUT_FIRST_TICK_OF_DAY
+    raw = stock_fut_cache.load_state()
+    if not raw:
+        return
+    STOCK_FUT_LAST_SESSION_CLOSE = raw.get("last_session_close", {})
+    STOCK_FUT_INTRADAY_LAST_TICK = raw.get("intraday_last_tick", {})
+    STOCK_FUT_TICK_DAY = raw.get("tick_day", {})
+    STOCK_FUT_FIRST_TICK_OF_DAY = raw.get("first_tick_of_day", {})
+
+
+_stock_fut_load()
 
 # token -> first 30-minute candle range for NIFTY breakout (nifty_30min_breakout)
 FIRST_30_CANDLE_OF_DAY = {}  # token -> {"date": date, "high": price, "low": price}
@@ -69,6 +128,7 @@ def login():
         msg = session.get("message") or "jwtToken/feedToken missing"
         raise RuntimeError(f"SmartAPI login failed: {msg}")
     return jwt_token, feed_token
+
 
 # =========================
 # WEBSOCKET RUNNER
@@ -192,6 +252,102 @@ def run_websocket():
                         ):
                             if price > first15_high or price < first15_low:
                                 STOCK_15_BREACHED[token] = True
+
+                    # ---- stock_fut_breakout: prior session = last tick of last session day; gap vs first tick today ----
+                    if token in STOCK_FUT_BREAKOUT_TOKENS:
+                        current_date = ts.date()
+                        old_day = STOCK_FUT_TICK_DAY.get(token)
+
+                        # New calendar day: commit previous session's last tick as closing price
+                        if old_day is not None and old_day != current_date:
+                            last = STOCK_FUT_INTRADAY_LAST_TICK.get(token)
+                            if (
+                                last
+                                and last["timestamp"].date() == old_day
+                            ):
+                                STOCK_FUT_LAST_SESSION_CLOSE[token] = {
+                                    "price": last["price"],
+                                    "timestamp": last["timestamp"],
+                                    "session_date": old_day,
+                                }
+                                _stock_fut_persist(force=True)
+                            STOCK_FUT_75M_RANGE.pop(token, None)
+                            STOCK_FUT_BROKEN_OUT.pop(token, None)
+                            STOCK_FUT_FIRST_TICK_OF_DAY.pop(token, None)
+                            STOCK_FUT_IS_GAPDOWN.pop(token, None)
+
+                        if old_day is None or old_day != current_date:
+                            STOCK_FUT_FIRST_TICK_OF_DAY[token] = {
+                                "price": price,
+                                "timestamp": ts,
+                            }
+
+                        STOCK_FUT_TICK_DAY[token] = current_date
+                        STOCK_FUT_INTRADAY_LAST_TICK[token] = {
+                            "price": price,
+                            "timestamp": ts,
+                        }
+                        _stock_fut_persist()
+
+                        last_sess = STOCK_FUT_LAST_SESSION_CLOSE.get(token)
+                        first = STOCK_FUT_FIRST_TICK_OF_DAY.get(token)
+                        gapdown = None
+                        if (
+                            last_sess is not None
+                            and first is not None
+                            and last_sess["session_date"] < first["timestamp"].date()
+                        ):
+                            prev_px = last_sess["price"]
+                            open_px = first["price"]
+                            if prev_px > 0:
+                                gap_pct = (open_px - prev_px) / prev_px * 100.0
+                                gapdown = gap_pct <= -STOCK_FUT_GAPDOWN_PCT
+                        STOCK_FUT_IS_GAPDOWN[token] = gapdown
+
+                        if gapdown is True and candles is not None and (
+                            ts.hour > 10 or (ts.hour == 10 and ts.minute >= 30)
+                        ):
+                            found75 = {}
+                            for c in candles:
+                                ct = c.get("time")
+                                if not ct or ct.date() != current_date:
+                                    continue
+                                if ct.hour == 9 and ct.minute in _STOCK_FUT_75M_MIN_9:
+                                    found75[(9, ct.minute)] = c
+                                elif ct.hour == 10 and ct.minute in _STOCK_FUT_75M_MIN_10:
+                                    found75[(10, ct.minute)] = c
+                            if len(found75) == 15:
+                                hs = [
+                                    v.get("high")
+                                    for v in found75.values()
+                                    if v.get("high") is not None
+                                ]
+                                ls = [
+                                    v.get("low")
+                                    for v in found75.values()
+                                    if v.get("low") is not None
+                                ]
+                                if hs and ls:
+                                    STOCK_FUT_75M_RANGE[token] = {
+                                        "date": current_date,
+                                        "high": max(hs),
+                                        "low": min(ls),
+                                    }
+
+                        rr = STOCK_FUT_75M_RANGE.get(token, {})
+                        if gapdown is True and rr.get("date") == current_date:
+                            h75 = rr.get("high")
+                            l75 = rr.get("low")
+                            if (
+                                h75 is not None
+                                and l75 is not None
+                                and (
+                                    ts.hour > 10
+                                    or (ts.hour == 10 and ts.minute >= 30)
+                                )
+                            ):
+                                if price > h75 or price < l75:
+                                    STOCK_FUT_BROKEN_OUT[token] = True
 
                     # ---- Track first 30-minute candle breakout for nifty_30min_breakout ----
                     if token in NIFTY30_TOKENS:
@@ -421,6 +577,46 @@ def run_websocket():
                             "low": first30_low,
                             "breached": breached30,
                         }, strategy="nifty_30min_breakout")
+
+                    # stock_fut_breakout (NSE cash; execution layer trades futures)
+                    if token in STOCK_FUT_BREAKOUT_TOKENS:
+                        gd = STOCK_FUT_IS_GAPDOWN.get(token)
+                        ls = STOCK_FUT_LAST_SESSION_CLOSE.get(token)
+                        prev_close = ls["price"] if ls else None
+                        ls_ts = (
+                            ls["timestamp"].isoformat()
+                            if ls and ls.get("timestamp")
+                            else None
+                        )
+                        ft = STOCK_FUT_FIRST_TICK_OF_DAY.get(token)
+                        open_ts = (
+                            ft["timestamp"].isoformat()
+                            if ft and ft.get("timestamp")
+                            else None
+                        )
+                        sf_high = sf_low = None
+                        if gd is True:
+                            r75 = STOCK_FUT_75M_RANGE.get(token, {})
+                            if r75.get("date") == ts.date():
+                                sf_high = r75.get("high")
+                                sf_low = r75.get("low")
+
+                        broadcast(
+                            {
+                                "symbol": symbol,
+                                "token": token,
+                                "timestamp": ts.isoformat(),
+                                "price": price,
+                                "prev_close": prev_close,
+                                "last_session_close_timestamp": ls_ts,
+                                "opening_tick_timestamp": open_ts,
+                                "gapdown": gd,
+                                "high": sf_high,
+                                "low": sf_low,
+                                "broken_out": STOCK_FUT_BROKEN_OUT.get(token, False),
+                            },
+                            strategy="stock_fut_breakout",
+                        )
 
                     # bank_nifty_crossover (BANKNIFTY + options)
                     if token in BANKNIFTY_CROSSOVER_TOKENS:

@@ -1,3 +1,4 @@
+certifi
 pandas
 TA-Lib
 pytz

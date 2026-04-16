@@ -28,7 +28,7 @@ def broadcast(tick: dict, strategy: str = None):
             client_strategies = subscriptions[symbol]
             # If strategy is None, send to all subscribers of this symbol
             # Otherwise, send only if client subscribed to this specific strategy
-            if strategy is None or strategy in client_strategies:
+            if strategy is None or strategy in client_strategies or "chart" in client_strategies:
                 websockets_to_send.append(ws)
         
         # Special handling for bank_nifty_ema: if broadcasting underlying BANKNIFTY,

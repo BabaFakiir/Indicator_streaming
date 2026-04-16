@@ -429,7 +429,7 @@ SUBSCRIPTION_GUIDE={"stock-15min": {"2885": "RELIANCE", "1333": "HDFCBANK", "115
                     # SYMBOLS uses token 99926000 -> "NIFTY50", so subscriptions must use "NIFTY50"
                     "nifty_30min_breakout": {"99926000": "NIFTY50"},
                     "bank_nifty_crossover": {
-                        "99926009": "BANKNIFTY",
+                            "99926009": "BANKNIFTY",
                             "67239": "BANKNIFTY28APR2647000CE",
                             "67241": "BANKNIFTY28APR2647100CE",
                             "67243": "BANKNIFTY28APR2647200CE",

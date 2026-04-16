@@ -2,12 +2,14 @@
 FastAPI application for Indicator Streaming Service
 Hosts WebSocket server for real-time indicator and trend data
 """
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 import json
 import asyncio
 import logging
 import threading
+import time
+from typing import List
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -16,6 +18,8 @@ logger = logging.getLogger(__name__)
 # Import here to avoid circular imports and catch errors
 try:
     from broadcaster import CLIENT_SUBSCRIPTIONS, set_main_loop
+    from chart_history_store import cleanup_old_data, get_history, init_db, list_symbols
+    from config import MARKET_CLOSE, MARKET_OPEN, SYMBOLS
 except ImportError as e:
     logger.error(f"Failed to import broadcaster: {e}")
     raise
@@ -46,6 +50,8 @@ async def startup_event():
     try:
         loop = asyncio.get_running_loop()
         set_main_loop(loop)
+        init_db()
+        cleanup_old_data()
         logger.info("FastAPI startup complete, event loop stored")
         
         # Start tick processor in background thread (non-blocking)
@@ -73,6 +79,100 @@ async def root():
 async def health():
     """Health check endpoint"""
     return {"status": "healthy", "connections": len(CLIENT_SUBSCRIPTIONS)}
+
+
+@app.get("/tv/config")
+async def tv_config():
+    return {
+        "supported_resolutions": ["1", "5", "15", "30", "60", "D"],
+        "supports_search": True,
+        "supports_group_request": False,
+        "supports_marks": False,
+        "supports_timescale_marks": False,
+        "supports_time": True,
+    }
+
+
+def _supported_symbols() -> List[str]:
+    return sorted(set(SYMBOLS.values()) | set(list_symbols()))
+
+
+def _resolve_symbol_name(symbol: str) -> str | None:
+    symbol = symbol.strip().upper()
+    return symbol if symbol in _supported_symbols() else None
+
+
+@app.get("/tv/search")
+async def tv_search(query: str = "", limit: int = 30):
+    q = query.strip().upper()
+    matches = [
+        {
+            "symbol": symbol,
+            "full_name": symbol,
+            "description": symbol,
+            "exchange": "NSE",
+            "ticker": symbol,
+            "type": "stock",
+        }
+        for symbol in _supported_symbols()
+        if not q or q in symbol
+    ]
+    return matches[: max(1, min(limit, 100))]
+
+
+@app.get("/tv/symbols")
+async def tv_symbols(symbol: str = Query(...)):
+    resolved = _resolve_symbol_name(symbol)
+    if resolved is None:
+        raise HTTPException(status_code=404, detail="Unknown symbol")
+
+    return {
+        "name": resolved,
+        "ticker": resolved,
+        "description": resolved,
+        "type": "stock",
+        "session": f"{MARKET_OPEN.strftime('%H%M')}-{MARKET_CLOSE.strftime('%H%M')}",
+        "timezone": "Asia/Kolkata",
+        "exchange": "NSE",
+        "listed_exchange": "NSE",
+        "minmov": 1,
+        "pricescale": 100,
+        "has_intraday": True,
+        "has_daily": True,
+        "supported_resolutions": ["1", "5", "15", "30", "60", "D"],
+        "data_status": "streaming",
+        "volume_precision": 0,
+    }
+
+
+@app.get("/tv/history")
+async def tv_history(
+    symbol: str = Query(...),
+    resolution: str = Query(...),
+    from_ts: int = Query(..., alias="from"),
+    to_ts: int = Query(..., alias="to"),
+):
+    resolved = _resolve_symbol_name(symbol)
+    if resolved is None:
+        return {"s": "no_data", "t": [], "o": [], "h": [], "l": [], "c": []}
+
+    bars = get_history(resolved, resolution, from_ts, to_ts)
+    if not bars:
+        return {"s": "no_data", "t": [], "o": [], "h": [], "l": [], "c": []}
+
+    return {
+        "s": "ok",
+        "t": [int(bar["time"] / 1000) for bar in bars],
+        "o": [bar["open"] for bar in bars],
+        "h": [bar["high"] for bar in bars],
+        "l": [bar["low"] for bar in bars],
+        "c": [bar["close"] for bar in bars],
+    }
+
+
+@app.get("/tv/time")
+async def tv_time():
+    return int(time.time())
 
 
 @app.websocket("/ws")
@@ -121,15 +221,17 @@ async def websocket_endpoint(websocket: WebSocket):
 
                     strategy = strategy_aliases.get(strategy, strategy)
 
-                    if strategy not in available_modes:
+                    if strategy == "chart":
+                        allowed_symbols = set(SYMBOLS.values())
+                    elif strategy not in available_modes:
                         await websocket.send_json({
                             "status": "error",
                             "message": f"Unknown strategy '{strategy}'. Available: {sorted(available_modes)}"
                         })
                         continue
-
-                    # Token/symbol allow-list per mode (derived from SUBSCRIPTION_GUIDE)
-                    allowed_symbols = set(SUBSCRIPTION_GUIDE[strategy].values())
+                    else:
+                        # Token/symbol allow-list per mode (derived from SUBSCRIPTION_GUIDE)
+                        allowed_symbols = set(SUBSCRIPTION_GUIDE[strategy].values())
                     if symbol not in allowed_symbols:
                         await websocket.send_json({
                             "status": "error",

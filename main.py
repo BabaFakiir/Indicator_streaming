@@ -8,6 +8,7 @@ from broadcaster import broadcast
 
 from config import *  # SYMBOLS, NSE_TOKENS, NFO_TOKENS, STOCK_FUT_GAPDOWN_PCT, etc.
 from candle_aggregator import CandleAggregator
+from chart_history_store import cleanup_old_data, upsert_tick
 from ema_calculator import calculate_indicators
 from tell_trend import tell_trend
 import pandas as pd
@@ -69,6 +70,7 @@ _STOCK_FUT_75M_MIN_10 = frozenset({0, 5, 10, 15, 20, 25})
 
 
 _STOCK_FUT_LAST_DISK_SAVE = 0.0
+_LAST_CHART_CLEANUP = 0.0
 
 
 def _stock_fut_persist(force: bool = False):
@@ -86,6 +88,15 @@ def _stock_fut_persist(force: bool = False):
             "first_tick_of_day": STOCK_FUT_FIRST_TICK_OF_DAY,
         }
     )
+
+
+def _maybe_cleanup_chart_history(force: bool = False):
+    global _LAST_CHART_CLEANUP
+    now = pytime.time()
+    if not force and (now - _LAST_CHART_CLEANUP) < 3600:
+        return
+    _LAST_CHART_CLEANUP = now
+    cleanup_old_data()
 
 
 def _stock_fut_load():
@@ -183,6 +194,8 @@ def run_websocket():
                         return
 
                     symbol = SYMBOLS[token]
+                    upsert_tick(symbol, ts, price)
+                    _maybe_cleanup_chart_history()
 
                     # ---- Track last price per token (needed for option LTP when forwarding from underlying) ----
                     LAST_PRICE[token] = price

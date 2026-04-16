@@ -17,7 +17,8 @@ async def main():
                 {"symbol": "NIFTY50", "strategy": "nifty_30min_breakout"},
                 {"symbol": "BANKNIFTY", "strategy": "bank_nifty_crossover"},
                 {"symbol": "TCS", "strategy": "ema_crossover"},
-                {"symbol": "RELIANCE", "strategy": "stock-15min"}
+                {"symbol": "TATAINVEST", "strategy": "stock-15min"},
+                {"symbol": "BHARTIARTL", "strategy": "stock_fut_breakout"}
             ]
         }
         
